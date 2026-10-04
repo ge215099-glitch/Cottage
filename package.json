@@ -1,0 +1,11 @@
+{
+  "name": "cottage",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "本地优先（BYOK）的 AI 角色扮演聊天桌面应用",
+  "scripts": {
+    "verify:design-doc": "node scripts/verify-design-doc.mjs",
+    "test": "node --test \"test/**/*.test.mjs\""
+  }
+}
