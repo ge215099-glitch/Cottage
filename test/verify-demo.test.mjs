@@ -50,11 +50,24 @@ test('Demo 覆盖设计稿的关键交互', () => {
     ['摘要可恢复', /恢复这段原文，摘要将失效/],
     ['流式中断', /已中断/],
     ['回到最新', /回到最新/],
-    ['归档标记', /已归档/],
+    ['归档只降透明度', /msg\.archived \.body\{opacity/],
+    ['侧栏折叠', /#sidebar\.collapsed\{width:56px\}/],
+    ['右栏可收起', /#panel\.hidden\{display:none\}/],
   ];
   for (const [why, re] of need) {
     assert.match(realHtml, re, `缺少：${why}`);
   }
+});
+
+test('侧栏只拉出/收起，不做拖拽调宽', () => {
+  assert.doesNotMatch(realHtml, /resizer/i);
+  assert.doesNotMatch(realHtml, /col-resize/i);
+  assert.doesNotMatch(realHtml, /makeResizer/);
+});
+
+test('界面不出现任何头像，也没有"已归档"提示', () => {
+  assert.doesNotMatch(realHtml, /avatar/i);
+  assert.doesNotMatch(realHtml, /已归档/);
 });
 
 test('Demo 的关键元素 id 一个都不能少', () => {

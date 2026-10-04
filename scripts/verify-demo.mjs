@@ -21,10 +21,10 @@ export const DEMO_PATH_DEFAULT = 'demo/index.html';
 
 /** 必须存在的元素 id（对应设计稿中的区块）。 */
 export const REQUIRED_IDS = [
-  'shell', 'sidebar', 'sidebar-resizer', 'conv-list', 'new-chat', 'list-new',
+  'shell', 'sidebar', 'conv-list', 'new-chat', 'list-new',
   'search-input', 'nav', 'persona-foot', 'main', 'topbar', 'chat-title', 'pin-btn',
   'panel-btn', 'scroll', 'thread', 'to-latest', 'composer', 'model-chip', 'meter',
-  'meter-bar', 'meter-text', 'send-btn', 'panel', 'panel-body', 'panel-resizer',
+  'meter-bar', 'meter-text', 'send-btn', 'panel', 'panel-body',
   'overlay-root', 'toast-root', 'theme-btn',
 ];
 
@@ -57,7 +57,7 @@ export const REQUIRED_PATTERNS = [
   [/已中断/, '必须处理流式中断'],
   [/重新生成/, '必须有重新生成'],
   [/回到最新/, '必须有回到最新按钮'],
-  [/已归档/, '归档消息必须有标记'],
+  [/msg\.archived \.body\{opacity/, '归档消息必须只靠降透明度区分'],
 ];
 
 export const FORBIDDEN_PATTERNS = [
@@ -68,6 +68,10 @@ export const FORBIDDEN_PATTERNS = [
   [/XMLHttpRequest/, '禁止网络请求'],
   [/sk-[A-Za-z0-9]{16,}/, '不得出现真实密钥'],
   [/api[_-]?key\s*[:=]\s*["'][^"']{12,}/i, '不得出现真实密钥'],
+  [/resizer/i, '侧栏不做拖拽调宽（只保留拉出/收起）'],
+  [/cursor:col-resize/i, '不得出现调宽光标'],
+  [/已归档/, '消息上不得出现"已归档"提示'],
+  [/\bavatar\b|avatarHTML|class="big-avatar"/i, '界面不使用头像（消息、对话列表、空态、右栏均无）'],
 ];
 
 const VOID_TAGS = new Set(['br', 'hr', 'img', 'input', 'meta', 'link', 'source', 'circle', 'path', 'rect', 'line', 'polyline', 'polygon', 'use', 'ellipse', 'stop', 'area', 'base', 'col', 'embed', 'track', 'wbr']);

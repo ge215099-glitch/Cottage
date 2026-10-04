@@ -78,9 +78,6 @@ input,textarea{font:inherit;color:inherit}
   transition:width .18s ease;
 }
 #sidebar.collapsed{width:56px}
-html.resizing #sidebar{transition:none}
-#sidebar-resizer{position:absolute;top:0;right:-2px;width:4px;height:100%;cursor:col-resize;z-index:5}
-#sidebar-resizer:hover{background:var(--surface-active)}
 
 .sidebar-head{height:56px;display:flex;align-items:center;gap:8px;padding:0 12px;flex:0 0 auto;cursor:default}
 .brand{font-weight:650;font-size:14px;letter-spacing:.2px;white-space:nowrap;overflow:hidden}
@@ -149,10 +146,6 @@ html[data-theme="dark"] .new-chat{color:#141414}
   content:"";position:absolute;left:0;top:9px;bottom:9px;width:2px;border-radius:2px;background:var(--accent-soft)
 }
 .conv-title{flex:1;min-width:0;font-size:13px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.avatar{
-  width:20px;height:20px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
-  font-size:10px;font-weight:600;color:#fff;
-}
 .stream-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-soft);flex:0 0 auto;animation:pulse 1.1s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.25;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
 .row-menu-btn{
@@ -221,7 +214,6 @@ html[data-theme="dark"] .new-chat{color:#141414}
 .msg{position:relative;margin-top:24px;scroll-margin-bottom:80px}
 .msg.same-role{margin-top:8px}
 .msg .head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.msg .head .avatar{width:20px;height:20px}
 .msg .head .name{font-size:12px;color:var(--text-secondary)}
 .msg .body{font-size:15px;line-height:26px;white-space:pre-wrap;word-break:break-word}
 .msg.user{display:flex;flex-direction:column;align-items:flex-end}
@@ -230,11 +222,8 @@ html[data-theme="dark"] .new-chat{color:#141414}
   background:var(--bubble-user);border-radius:var(--radius-card);padding:10px 14px;
   max-width:min(560px,86%);white-space:pre-wrap
 }
+/* 归档消息只做轻微降透明度区分，不加任何提示标签 */
 .msg.archived .body{opacity:.62}
-.archived-tag{
-  display:inline-block;font-size:11px;padding:1px 6px;border-radius:5px;margin-left:6px;
-  background:var(--surface-active);color:var(--text-tertiary);vertical-align:1px
-}
 .toolbar{
   position:absolute;top:-14px;display:flex;gap:2px;padding:2px;border-radius:9px;
   background:var(--surface-overlay);border:1px solid var(--border-subtle);box-shadow:var(--shadow-menu);
@@ -288,7 +277,6 @@ html[data-theme="dark"] .new-chat{color:#141414}
 .interrupted-tag button{color:var(--accent-soft)}
 
 .empty{max-width:620px;margin:0 auto;padding:12vh 24px 0;text-align:center}
-.empty .big-avatar{width:64px;height:64px;border-radius:50%;margin:0 auto 16px;display:grid;place-items:center;color:#fff;font-size:24px;font-weight:600}
 .empty h2{margin:0 0 10px;font-size:20px;font-weight:600}
 .empty p{margin:0 auto;color:var(--text-secondary);font-size:14px;line-height:24px;max-width:480px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:22px}
@@ -346,14 +334,14 @@ html[data-theme="dark"] .send-btn{color:#141414}
 .composer-hint{text-align:center;font-size:11px;color:var(--text-tertiary);margin-top:8px}
 .composer-hint.warn{color:var(--danger)}
 
-/* ---------------- 右栏 ---------------- */
+/* ---------------- 右栏（只拉出/收起，不可调宽） ---------------- */
 #panel{
   width:320px;flex:0 0 auto;border-left:1px solid var(--border-subtle);display:flex;flex-direction:column;
   position:relative;background:var(--bg-app)
 }
 #panel.hidden{display:none}
-#panel-resizer{position:absolute;top:0;left:-2px;width:4px;height:100%;cursor:col-resize;z-index:5}
-#panel-resizer:hover{background:var(--surface-active)}
+#panel:not(.hidden){animation:panelIn .16s ease}
+@keyframes panelIn{from{opacity:.4;transform:translateX(10px)}to{opacity:1;transform:none}}
 .tabs{height:32px;flex:0 0 auto;display:flex;align-items:stretch;gap:2px;padding:0 10px;border-bottom:1px solid var(--border-subtle)}
 .tab{
   padding:0 8px;font-size:13px;color:var(--text-tertiary);position:relative;display:flex;align-items:center
@@ -517,13 +505,11 @@ html[data-theme="dark"] .btn.primary{color:#141414}
     <div id="conv-list" role="list" aria-label="对话列表"></div>
 
     <div class="sidebar-foot" id="persona-foot" title="当前人设">
-      <div class="avatar" style="width:26px;height:26px;font-size:11px;background:#7c6cf0">AS</div>
       <div class="who">ASMobbin<small>默认人设</small></div>
       <button class="icon-btn" aria-label="人设选项">
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
       </button>
     </div>
-    <div id="sidebar-resizer" title="拖拽调整宽度"></div>
   </aside>
 
   <!-- ================= 主区 ================= -->
@@ -586,7 +572,6 @@ html[data-theme="dark"] .btn.primary{color:#141414}
       <button class="tab" data-tab="data" role="tab">数据</button>
     </div>
     <div class="panel-body" id="panel-body"></div>
-    <div id="panel-resizer" title="拖拽调整宽度"></div>
   </aside>
 </div>
 
@@ -764,12 +749,6 @@ html[data-theme="dark"] .btn.primary{color:#141414}
 
   /* ---------------- 工具 ---------------- */
   function esc(s){ return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
-  function sha(s){ let h = 0; for (const ch of String(s)) h = (h*31 + ch.codePointAt(0)) % 360; return h; }
-  function avatarHTML(char, size){
-    const bg = char.color || `hsl(${sha(char.name)} 55% 52%)`;
-    const st = size ? `width:${size}px;height:${size}px;font-size:${Math.round(size*0.45)}px` : "";
-    return `<span class="avatar" style="background:${bg};${st}">${esc(char.name.slice(0,1))}</span>`;
-  }
   function dayKey(ts){
     const d = new Date(ts), n = new Date();
     const startOf = x => { const y = new Date(x); y.setHours(0,0,0,0); return +y; };
@@ -832,7 +811,6 @@ html[data-theme="dark"] .btn.primary{color:#141414}
         ? `<div class="group-title"><span>找到 ${list.length} 个对话</span></div>`
         : `<div class="group-title"><span>${key}</span>${key==="已置顶"&&rows.length>3?`<span class="caret">${ICON.chev}</span>`:""}</div>`;
       for (const c of rows){
-        const ch = CHARACTERS[c.charId];
         const active = c.id === state.activeId;
         const streaming = state.streaming && state.streaming.convId === c.id;
         const title = state.query
@@ -840,7 +818,6 @@ html[data-theme="dark"] .btn.primary{color:#141414}
           : esc(c.title);
         html += `<div class="conv-row${active?" active":""}" role="listitem" tabindex="0" data-id="${c.id}"
             aria-label="对话：${esc(c.title)}"${active?' aria-current="true"':''}>
-          ${avatarHTML(ch)}
           <span class="conv-title">${title}</span>
           ${streaming?'<span class="stream-dot" title="生成中"></span>':""}
           <button class="row-menu-btn" data-menu="${c.id}" aria-haspopup="menu" aria-label="更多操作：${esc(c.title)}" title="更多操作">${ICON.dots}</button>
@@ -977,7 +954,6 @@ html[data-theme="dark"] .btn.primary{color:#141414}
     const ch = charOf(c);
     if (!c.messages.length){
       thread.innerHTML = `<div class="empty">
-        ${avatarHTML(ch, 64).replace('class="avatar"','class="big-avatar"')}
         <h2>${esc(ch.name)}</h2>
         <p>${esc(ch.desc)}</p>
         <div class="chips">
@@ -1003,16 +979,15 @@ html[data-theme="dark"] .btn.primary{color:#141414}
       const ch2 = CHARACTERS[c.charId];
       let body = esc(m.content).replace(/\n/g,"<br>");
       if (isStreaming) body += '<span class="cursor"></span>';
-      if (m.archived) body += '<span class="archived-tag">已归档</span>';
 
-      html += `<div class="msg ${m.role==="user"?"user":"assistant"}${sameRole?" same-role":""}" data-id="${m.id}">
+      html += `<div class="msg ${m.role==="user"?"user":"assistant"}${sameRole?" same-role":""}${m.archived?" archived":""}" data-id="${m.id}">
         <div class="toolbar" role="toolbar" aria-label="消息操作">
           <button data-act="copy" title="复制">${ICON.copy}</button>
           ${m.role==="user" ? `<button data-act="edit" title="编辑">${ICON.edit}</button>` : ""}
           ${m.role!=="user" ? `<button data-act="redo" title="重新生成">${ICON.redo}</button>` : ""}
           <button data-act="more" title="更多" aria-haspopup="menu">${ICON.dots}</button>
         </div>
-        <div class="head">${avatarHTML(ch2)}<span class="name">${esc(ch2.name)}</span></div>
+        <div class="head"><span class="name">${esc(ch2.name)}</span></div>
         <div class="body">${isEditing ? editHTML(m) : body}</div>
         ${m.interrupted && !isStreaming ? `<div class="interrupted-tag">已中断
             <button data-act="continue">继续</button></div>` : ""}
@@ -1442,10 +1417,9 @@ html[data-theme="dark"] .btn.primary{color:#141414}
 
     if (state.panelTab === "character"){
       body.innerHTML = `
-        <div class="panel-section" style="text-align:center">
-          ${avatarHTML(ch, 64).replace('class="avatar"','class="big-avatar"')}
-          <h3 style="margin-top:12px">${esc(ch.name)}</h3>
-          <div class="tag-list" style="justify-content:center">${ch.tags.map(t=>`<span class="chip" style="padding:3px 9px;font-size:12px">${esc(t)}</span>`).join("")}</div>
+        <div class="panel-section">
+          <h3>${esc(ch.name)}</h3>
+          <div class="tag-list">${ch.tags.map(t=>`<span class="chip" style="padding:3px 9px;font-size:12px">${esc(t)}</span>`).join("")}</div>
         </div>
         <div class="panel-section">
           <h3>角色描述</h3>
@@ -1497,7 +1471,7 @@ html[data-theme="dark"] .btn.primary{color:#141414}
     let text, name;
     if (kind === "md"){
       text = `# ${c.title}\n\n角色：${ch.name}　模型：${c.model}　导出时间：${new Date().toLocaleString("zh-CN")}\n\n`;
-      text += c.messages.map(m => `**${m.role === "user" ? c.persona : ch.name}**\n\n${m.content}${m.archived?"\n\n> （已归档）":""}\n`).join("\n---\n\n");
+      text += c.messages.map(m => `**${m.role === "user" ? c.persona : ch.name}**\n\n${m.content}\n`).join("\n---\n\n");
       if (c.summaries.length) text += `\n\n## 摘要\n\n` + c.summaries.map(s=>`- 第 ${s.coversFrom}–${s.coversTo} 条（${s.tokenCount} tok，${s.model}）\n` + s.content.map(([k,v])=>`  - ${k}：${v}`).join("\n")).join("\n");
       name = c.title + ".md";
     } else {
@@ -1679,32 +1653,6 @@ html[data-theme="dark"] .btn.primary{color:#141414}
   $("#chat-title").addEventListener("dblclick", () => { if (conv()) startRename(state.activeId); });
   $("#chat-title").addEventListener("keydown", e => { if (e.key === "F2"){ e.preventDefault(); startRename(state.activeId); } });
   $("#topbar").addEventListener("mouseenter", () => $("#topbar").classList.add("pin-visible"));
-
-  /* 侧栏宽度拖拽 */
-  function makeResizer(el, onMove, min, max){
-    el.addEventListener("mousedown", e => {
-      e.preventDefault();
-      document.documentElement.classList.add("resizing");
-      const move = ev => onMove(ev);
-      const up = () => {
-        document.removeEventListener("mousemove", move);
-        document.removeEventListener("mouseup", up);
-        document.documentElement.classList.remove("resizing");
-      };
-      document.addEventListener("mousemove", move);
-      document.addEventListener("mouseup", up);
-    });
-  }
-  makeResizer($("#sidebar-resizer"), e => {
-    const w = Math.max(200, Math.min(360, e.clientX));
-    $("#sidebar").style.width = w + "px";
-    $("#sidebar").classList.toggle("collapsed", w < 200);
-  });
-  makeResizer($("#panel-resizer"), e => {
-    const w = Math.max(280, Math.min(420, innerWidth - e.clientX));
-    $("#panel").style.width = w + "px";
-  });
-  $("#panel-resizer").addEventListener("dblclick", () => { $("#panel").style.width = "320px"; });
 
   /* 全局快捷键与关闭 */
   document.addEventListener("keydown", e => {
