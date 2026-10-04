@@ -452,7 +452,7 @@ UI 文档对菜单提了明确时序（180ms 宽限期、锚点切换不闪断�
 | 项 | 决定 | 理由 |
 |---|---|---|
 | 开发构建 | `electron-vite`（main / preload / renderer 三段） | 三段配置一次配好，renderer HMR |
-| 主进程模块格式 | 输出 CJS（`.cjs` 或独立 `package.json` 控制） | 原生模块与 Electron 主进程的最稳组合；避免仓库根 `type: module` 带来的加载方式混用 |
+| 主进程模块格式 | **CJS**，由产物目录内的 `{"type":"commonjs"}` 标识保证（不是靠扩展名） | 见下方勘误：文件名受 electron-vite 约束，CJS 这条要求改用目录级标识落实 |
 | 打包 | `electron-builder`：Windows NSIS、macOS DMG、Linux AppImage | 三平台一套配置 |
 | 原生模块 | 安装后 `electron-builder install-app-deps`；`asarUnpack` 含 `**/*.node` | 见 5.4 |
 | 版本锁定 | `electron` 精确版本；提交 `pnpm-lock.yaml` | 防"本地能跑、装的包跑不起来" |
@@ -464,10 +464,36 @@ UI 文档对菜单提了明确时序（180ms 宽限期、锚点切换不闪断�
 
 ## 11. 测试策略
 
+> **勘误（v1.0 修订）：主进程产物的文件名与格式控制**
+>
+> 本节原写"主进程输出 CJS（`.cjs` 或独立 `package.json` 控制）"。实现时发现
+> electron-vite 有两条硬约定，两者叠加后与"用 `.cjs` 扩展名"冲突：
+>
+> 1. 它用 `build.rollupOptions.input` 的**键名**决定产物文件名，
+>    `output.entryFileNames` 对入口 chunk 不生效；
+> 2. 启动 Electron 前会调 `ensureElectronEntryFile()` 校验 `package.json` 的 `main`
+>    字段所指文件**确实存在**，否则直接抛 `No electron app entry file found` 退出。
+>
+> 于是"产物叫 `out/main/index.cjs`、`main` 指向 `out/main/index.js`"这组配置会让
+> **`pnpm build` 全绿而 `pnpm dev` 直接起不来**——属于最难发现的一类问题。
+>
+> 最终方案：产物就用 `out/main/index.js` 与 `out/preload/index.js`（顺带满足
+> electron-vite 与文档的文件名约定），CJS 这条要求改由**产物目录内的
+> `{"type":"commonjs"}`** 落实（构建时由 `emitCommonJsMarker` 插件写入）。
+> 这样"仓库根是 `type: module`、而这两个目录里的 `.js` 是 CJS"就成立了，
+> 且不依赖扩展名。
+>
+> 相应地，验证里增加了 `pnpm smoke:dev`：**`pnpm build` 通过不代表 `pnpm dev` 能用**，
+> 这两条路径必须各自验证（见第 11 节的表格）。
+
 ### 11.1 三层分工
 
 ```
         ┌──────────────────────────────────────────────┐
+        │  冒烟（脚本，不打框架）                          │
+        │  smoke:dev  dev server + renderer 入口 + HMR   │
+        │  smoke       Electron 拉起主进程启动链路         │
+        ├──────────────────────────────────────────────┤
         │  E2E：Playwright Electron（少量，慢而可信）    │
         │  强杀重启 · 流式中断 · 真实布局与自适应         │
         ├──────────────────────────────────────────────┤
@@ -478,6 +504,9 @@ UI 文档对菜单提了明确时序（180ms 宽限期、锚点切换不闪断�
         │  core 纯函数 · 适配器序列化 · DAO/迁移/事务     │
         └──────────────────────────────────────────────┘
 ```
+
+> 冒烟与 E2E 的分工：冒烟脚本只回答"**它能不能起来**"，不模拟用户操作；
+> 需要真实排版与进程生死的断言（悬停位移、菜单翻转、强杀重启）仍归 E2E。
 
 ### 11.2 各层覆盖什么
 

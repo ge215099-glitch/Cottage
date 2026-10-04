@@ -6,56 +6,34 @@
  *   - `nodeIntegration: false`：渲染进程无 Node 能力。
  *   - `sandbox: true`：**把模型输出当不可信内容对待**（这是本产品的实际威胁模型：
  *     角色卡的 first_mes、模型回答都是外部输入）。
- *   - CSP `default-src 'self'` / `img-src 'self' data:` / 禁 `unsafe-eval`：
- *     阻断模型输出里的外链图片与脚本。
+ *   - CSP：生产与开发两套，构造逻辑在 `csp.ts`（不依赖 electron，可直接单测）。
  *   - 外链一律 deny，正文里的链接交给 `shell.openExternal` 且只允许 http/https。
  *   - 拦截 `will-navigate`，只允许应用自身。
  */
 import { BrowserWindow, shell } from 'electron';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { buildContentSecurityPolicy, isInternalNavigation } from './csp.js';
 import { log } from './log.js';
 
-/** 开发模式下 electron-vite 会注入这个变量。 */
-const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'];
+/** 开发模式下 electron-vite 会注入这个变量；生产为空。 */
+const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] ?? null;
 
 /** 只允许这两种协议的链接用系统浏览器打开。 */
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
-
-/**
- * 内容安全策略。
- *
- * 注意 `connect-src 'none'`：renderer **不允许发任何网络请求**——
- * DB 与 API 调用只在主进程（技术方案 4.2 的 renderer 禁止项）。
- * 这条比"靠 code review 拦住"可靠得多。
- */
-export const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self'",
-  // 样式需要允许内联：React 的 style 属性与我们的主题变量都靠它
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self' data:",
-  "connect-src 'none'",
-  "object-src 'none'",
-  "frame-src 'none'",
-  "media-src 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-].join('; ');
 
 export function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
-    // UI 文档 9 节的自适应下限：再小就进入浮层侧栏档，而不是把主区压塌
+    // UI 文档第 9 节的自适应下限：再小就进入浮层侧栏档，而不是把主区压塌
     minWidth: 640,
     minHeight: 480,
     show: false,
     backgroundColor: '#ffffff',
     title: 'Cottage',
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.cjs'),
+      // preload 与 main 一样输出到 out/<name>/index.js（见 electron.vite.config.ts 的说明）
+      preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -69,14 +47,18 @@ export function createMainWindow(): BrowserWindow {
   window.once('ready-to-show', () => window.show());
 
   // ---- CSP ----
+  // 按模式构造：生产是 connect-src 'none'（renderer 不许发请求），
+  // 开发必须放行 dev server 与它的 WebSocket，否则 HMR 不工作。
+  const policy = buildContentSecurityPolicy(DEV_SERVER_URL);
   window.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [CONTENT_SECURITY_POLICY],
+        'Content-Security-Policy': [policy],
       },
     });
   });
+  log.info('已下发 CSP', DEV_SERVER_URL ? '开发模式（已放行 dev server 与 HMR）' : '生产模式');
 
   // ---- 导航与窗口打开策略 ----
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -86,9 +68,7 @@ export function createMainWindow(): BrowserWindow {
   });
 
   window.webContents.on('will-navigate', (event, url) => {
-    const allowed = DEV_SERVER_URL ? url.startsWith(DEV_SERVER_URL) : false;
-    const isSelf = url.startsWith('file://');
-    if (!allowed && !isSelf) {
+    if (!isInternalNavigation(url, DEV_SERVER_URL)) {
       event.preventDefault();
       openExternalIfSafe(url);
       log.warn('已拦截窗口内导航', url);
@@ -123,6 +103,3 @@ export function openExternalIfSafe(url: string): void {
   }
   void shell.openExternal(url).catch((err: unknown) => log.warn('打开外链失败', err));
 }
-
-/** 供 electron-vite 定位 preload 目录时复用。 */
-export const PRELOAD_DIR = fileURLToPath(new URL('../preload', import.meta.url));

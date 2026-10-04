@@ -1,0 +1,34 @@
+fix: 修好 pnpm dev（产物命名与 main 不一致）并补开发模式冒烟测试
+
+发现并修掉一个「构建全绿、开发起不来」的真问题：
+
+- electron.vite.config.ts 原来让 main/preload 输出 index.cjs，而 package.json 的
+  main 指向 out/main/index.js。electron-vite 启动 Electron 前会校验 main 所指文件
+  存在，于是 pnpm dev 直接以 "No electron app entry file found" 退出；
+  pnpm build 却完全正常。
+  根因：electron-vite 用 rollup input 的键名决定产物名，output.entryFileNames
+  对入口 chunk 不生效。
+  修法：产物就叫 out/main/index.js 与 out/preload/index.js（满足 electron-vite
+  与文档的文件名约定），CJS 这条要求改由产物目录内的 {"type":"commonjs"} 落实
+  （构建时由 emitCommonJsMarker 插件写入），不再依赖扩展名。
+  同时修正 window.ts 里已失效的 preload 路径（指向 .cjs → .js）。
+
+修复第二个真问题：开发模式下 CSP 会掐掉 HMR。
+
+- 原来不分环境都用 connect-src 'none'，而 Vite 的热更新走 WebSocket，
+  结果是「改了代码页面不刷新」而控制台只说 CSP 违规。
+- 抽出 src/main/csp.ts（不依赖 electron，可直接单测），按模式构造策略：
+  生产仍是 connect-src 'none'；开发放行 dev server 的 http 与 ws。
+  地址畸形时回退生产策略，避免因为一个环境变量静默放松安全。
+- 顺带修正 will-navigate：原来只允许 file://，开发模式下的自身导航会被误拦。
+
+新增验证：
+
+- scripts/verify-dev-server.mjs（pnpm smoke:dev）：用哑进程替换 Electron，
+  把 Vite dev server 这条链路单独隔离验证——断言三段构建完成、dev server
+  真的监听端口、返回的 HTML 含 #root 与 @vite/client、main.tsx 被正确转译。
+- test/csp.test.ts：25 项断言，把「生产不许发请求」与「开发必须放行 HMR」
+  这两条互相拉扯的要求钉死，包括「同前缀恶意域名不算自身」这类边界。
+
+验证：测试 387 项全绿（vitest 316 + node --test 71），typecheck 干净，
+4 份校验全过，三段构建成功，smoke:dev 通过。

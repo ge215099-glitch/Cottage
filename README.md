@@ -55,7 +55,8 @@ pnpm rebuild:native
 pnpm typecheck      # tsc 严格模式，main/preload/shared/core 与 renderer 两套配置
 pnpm verify         # 四份校验：设计文档 / demo / 技术方案 / 编码与依赖边界
 pnpm test           # 单元 + 组件测试（vitest），再加校验器自身的测试（node --test）
-pnpm smoke          # 真的把 Electron 拉起来，确认能开库、迁移、注册 IPC、建窗口
+pnpm smoke:dev      # 开发模式：dev server 起来并正确提供 renderer 入口（含 HMR 客户端）
+pnpm smoke          # 生产模式：真的把 Electron 拉起来，确认能开库、迁移、注册 IPC、建窗口
 pnpm verify:all     # 上面全部串起来跑一遍
 ```
 
@@ -63,14 +64,24 @@ pnpm verify:all     # 上面全部串起来跑一遍
 
 | 层 | 环境 | 覆盖什么 |
 |---|---|---|
-| 单元 | 纯 Node | core 纯函数（组装幂等、变量替换、token 求和、适配器序列化、SSE 折叠）、迁移幂等、压缩事务原子性、截断级联失效、`pinned_at` 不改 `updated_at`、密钥边界 |
+| 单元 | 纯 Node | core 纯函数（组装幂等、变量替换、token 求和、适配器序列化、SSE 折叠）、迁移幂等、压缩事务原子性、截断级联失效、`pinned_at` 不改 `updated_at`、密钥边界、CSP 与导航判定 |
 | 组件 | jsdom + RTL | 侧栏悬停与菜单时序、行内重命名、列表两段分组、搜索过滤、键盘导航、占用条阈值、「约」前缀、无头像断言 |
-| 冒烟 | Electron | 主进程启动链路（开库 → 迁移 → 清扫 → 注册 IPC → 建窗口） |
+| 冒烟（开发） | node + Vite | `pnpm dev` 三段构建、dev server 端口、renderer 入口与 HMR 客户端 |
+| 冒烟（生产） | Electron | 主进程启动链路（开库 → 迁移 → 清扫 → 注册 IPC → 建窗口） |
 
 **必须诚实标注的边界**：jsdom 没有排版引擎，「悬停前后 `getBoundingClientRect()`
 不变」「菜单在视口边缘自动翻转」「侧栏真实宽度只有 260 / 56 两态」这类断言
 **只能在 E2E 里做**。把它们写在组件测试里只会得到永远为真的假通过，
 所以它们既没写、也不假装覆盖。
+
+两个冒烟脚本各管一半，谁都不假装覆盖另一半：`smoke:dev` 用哑进程替换 Electron，
+只验证 Vite dev server 这条链路（因为真实 Electron 在某些环境起不来会把 server 一起带走）；
+`smoke` 验证 Electron 能启动主进程，但它不验证界面渲染。
+
+> **`pnpm dev` 与 `pnpm build` 是两条独立路径**，构建通过不代表开发能起来。
+> 实测踩过一次：产物名与 `package.json` 的 `main` 不一致时，`pnpm build` 全绿，
+> 而 `electron-vite dev` 会在启动前校验 `main` 所指文件存在并直接退出。
+> 这也是为什么 `smoke:dev` 单独存在。
 
 ### 为什么 DAO 测试不需要原生模块
 

@@ -17,7 +17,7 @@
  * 退出码：0 = 起来了；1 = 起不来
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -72,7 +72,15 @@ export function electronBinary(cwd = repoRoot) {
 }
 
 export function mainEntry(cwd = repoRoot) {
-  return path.join(cwd, 'out', 'main', 'index.cjs');
+  // 入口文件名与 package.json 的 main 保持一致（见 electron.vite.config.ts 的说明：
+  // electron-vite 用 rollup input 的键名决定产物名，且启动前会校验 main 所指文件存在）。
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(cwd, 'package.json'), 'utf8'));
+    if (pkg.main) return path.join(cwd, pkg.main);
+  } catch {
+    /* 落到默认值 */
+  }
+  return path.join(cwd, 'out', 'main', 'index.js');
 }
 
 async function run() {
