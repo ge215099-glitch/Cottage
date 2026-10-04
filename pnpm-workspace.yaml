@@ -1,0 +1,14 @@
+# pnpm 11 起，构建脚本白名单写在这里（package.json 的 pnpm 字段不再被读取）。
+#
+# electron  —— 必须跑 postinstall，否则不下载 Electron 运行时二进制。
+# esbuild   —— vite / vitest 的构建依赖。
+#
+# better-sqlite3 **故意不放行**：它的依赖自带 postinstall（node-gyp 编译），
+# 在没有 Visual Studio C++ 工具链的机器上会失败并**删掉已有的 .node 文件**，
+# 把"能跑"变成"不能跑"。按 Electron ABI 重建由 `pnpm rebuild:native`
+# 调 electron-builder / @electron/rebuild 完成，它会优先取官方预编译产物，
+# 不需要本地编译器（docs/tech-stack.md 5.4 的对冲手段）。
+allowBuilds:
+  electron: true
+  esbuild: true
+  better-sqlite3: false

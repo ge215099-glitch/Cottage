@@ -1,14 +1,53 @@
 {
   "name": "cottage",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "0.1.0",
   "description": "本地优先（BYOK）的 AI 角色扮演聊天桌面应用",
+  "author": "Cottage",
+  "main": "out/main/index.js",
   "scripts": {
-    "verify": "node scripts/verify-design-doc.mjs && node scripts/verify-demo.mjs && node scripts/verify-tech-stack.mjs",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "rebuild:native": "node scripts/rebuild-native.mjs",
+    "verify": "node scripts/verify-design-doc.mjs && node scripts/verify-demo.mjs && node scripts/verify-tech-stack.mjs && node scripts/verify-boundaries.mjs",
     "verify:design-doc": "node scripts/verify-design-doc.mjs",
     "verify:demo": "node scripts/verify-demo.mjs",
     "verify:tech-stack": "node scripts/verify-tech-stack.mjs",
-    "test": "node --test \"test/**/*.test.mjs\""
+    "verify:boundaries": "node scripts/verify-boundaries.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "postinstall": "node scripts/rebuild-native.mjs --quiet"
+  },
+  "dependencies": {
+    "better-sqlite3": "11.10.0",
+    "gpt-tokenizer": "2.9.0",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "@floating-ui/react": "0.27.5",
+    "@tanstack/react-virtual": "3.13.2",
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/react": "16.2.0",
+    "@testing-library/user-event": "14.6.1",
+    "@types/better-sqlite3": "7.6.12",
+    "@types/node": "22.13.10",
+    "@types/react": "19.0.10",
+    "@types/react-dom": "19.0.4",
+    "@vitejs/plugin-react": "4.3.4",
+    "electron": "34.3.3",
+    "electron-builder": "25.1.8",
+    "electron-vite": "3.0.0",
+    "jsdom": "26.0.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-markdown": "9.0.3",
+    "rehype-sanitize": "6.0.0",
+    "remark-gfm": "4.0.0",
+    "typescript": "5.7.3",
+    "vite": "6.1.0",
+    "vitest": "3.0.7",
+    "zustand": "5.0.3"
   }
 }
