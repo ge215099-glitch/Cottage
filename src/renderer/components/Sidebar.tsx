@@ -16,6 +16,7 @@ import { useAppStore, filterConversations, groupConversations, type ViewKey } fr
 import { useChatStore } from '../stores/chat.js';
 import { DEFAULT_GRACE_MS, useMenuStore } from '../stores/menu.js';
 import { Icons } from './Icons.js';
+import { VirtualRowList, shouldVirtualize } from './VirtualRowList.js';
 import type { Conversation } from '@shared/types.js';
 
 /** 四个固定导航项（不设二级分组标题）。 */
@@ -314,8 +315,7 @@ export function Sidebar({
             <div className="group-title">
               <span>找到 {filtered.length} 个对话</span>
             </div>
-            {groups.pinned.map(renderRow)}
-            {groups.rest.map(renderRow)}
+            <ConversationRows rows={[...groups.pinned, ...groups.rest]} renderRow={renderRow} />
           </>
         ) : (
           <>
@@ -324,11 +324,11 @@ export function Sidebar({
                 <div className="group-title">
                   <span>已置顶</span>
                 </div>
-                {groups.pinned.map(renderRow)}
+                <ConversationRows rows={groups.pinned} renderRow={renderRow} />
               </>
             ) : null}
             {/* 其余全部会话没有段标题 */}
-            {groups.rest.map(renderRow)}
+            <ConversationRows rows={groups.rest} renderRow={renderRow} />
           </>
         )}
       </div>
@@ -453,5 +453,37 @@ function Highlight({ text, query }: { text: string; query: string }): JSX.Elemen
       <b>{text.slice(index, index + q.length)}</b>
       {text.slice(index + q.length)}
     </>
+  );
+}
+
+/**
+ * 会话行渲染器：条目多时走虚拟滚动，少时直接全量渲染。
+ *
+ * 阈值存在的理由：虚拟化要付出绝对定位 + 额外算层的成本，几十条会话时纯属负担。
+ * 上千条时它才是必需的——UI 文档 5.6 明确要求"只渲染视口 ±10 行"。
+ *
+ * 注意这里**不接管滚动容器**：滚动条仍由 `.conv-list` 提供，这样分组标题的
+ * `position: sticky` 才能照常吸顶（把滚动交给虚拟列表自己，吸顶就会失效）。
+ */
+function ConversationRows({
+  rows,
+  renderRow,
+}: {
+  rows: Conversation[];
+  renderRow(conversation: Conversation): JSX.Element;
+}): JSX.Element {
+  const scrollElement = document.getElementById('conv-list');
+
+  if (!shouldVirtualize(rows.length) || !scrollElement) {
+    return <>{rows.map(renderRow)}</>;
+  }
+
+  return (
+    <VirtualRowList
+      items={rows}
+      rowKey={(conversation) => conversation.id}
+      renderRow={(conversation) => renderRow(conversation)}
+      scrollElement={scrollElement}
+    />
   );
 }
