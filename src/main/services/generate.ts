@@ -35,6 +35,7 @@ import { compressConversation } from './compress.js';
 import { streamChat } from '../providers/runtime.js';
 import {
   appendMessageContent,
+  deleteMessage,
   finishMessage,
   getMessage,
   insertMessage,
@@ -256,7 +257,22 @@ async function runStream(ctx: AppContext, input: RunStreamInput): Promise<void> 
   let lastEmitAt = 0;
   let pendingDelta = '';
 
+  /**
+   * 本次流是否仍是该会话的"当前流"。
+   *
+   * 这不是防御性代码，而是一个真实竞态的修复：同一会话再次发送时，
+   * 新流会先 abort 旧流（见 `beginGeneration`）。旧流的 `streamChat` 收到中断信号后
+   * 会**继续走收尾流程**，而那时新流可能已经写入了自己的内容——
+   * 若旧流不做判断就把自己的残留文本与 `interrupted` 状态写回去，
+   * 新一次生成的结果就被覆盖掉了（表现为"重新生成后内容是空的/还是旧的"）。
+   *
+   * 判据：`ctx.streams` 里登记的 streamId 是否还是自己。
+   * 被取代后本流的一切写操作都必须放弃，交给新流负责那一行消息。
+   */
+  const isCurrent = (): boolean => ctx.streams.get(input.conversationId)?.streamId === input.streamId;
+
   const persist = (force: boolean): void => {
+    if (!isCurrent()) return;
     const now = Date.now();
     if (!force && now - lastPersistAt < PERSIST_THROTTLE_MS) return;
     lastPersistAt = now;
@@ -264,7 +280,7 @@ async function runStream(ctx: AppContext, input: RunStreamInput): Promise<void> 
   };
 
   const emit = (force: boolean): void => {
-    if (!pendingDelta) return;
+    if (!pendingDelta || !isCurrent()) return;
     const now = Date.now();
     if (!force && now - lastEmitAt < EMIT_THROTTLE_MS) return;
     lastEmitAt = now;
@@ -340,7 +356,16 @@ async function runStream(ctx: AppContext, input: RunStreamInput): Promise<void> 
       },
     );
 
-    // 收尾：强制落库 + 强制推送，保证最后一段不丢
+    // 收尾：强制落库 + 强制推送，保证最后一段不丢。
+    //
+    // 被新流取代时走另一条路：**删掉自己这一行**，而不是留着不管。
+    // 理由：新流是"重新问了一遍"，被取代的那半截回答没有保留价值；
+    // 而如果什么都不做，这一行会永远停在 `streaming`——那正是验收项 10
+    // 明令禁止的"残留生成中"状态。
+    if (!isCurrent()) {
+      deleteMessage(ctx.db, input.assistantMessageId);
+      return;
+    }
     persist(true);
     emit(true);
 
@@ -370,6 +395,12 @@ async function runStream(ctx: AppContext, input: RunStreamInput): Promise<void> 
     });
     notifyChanged(ctx, input);
   } catch (err) {
+    // 被新流取代时不写错误状态，也不留残余：直接把自己这一行删掉
+    if (!isCurrent()) {
+      deleteMessage(ctx.db, input.assistantMessageId);
+      return;
+    }
+
     const error: NormalizedError =
       err instanceof ContextError
         ? makeError(
