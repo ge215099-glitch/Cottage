@@ -5,7 +5,9 @@
   "type": "module",
   "description": "本地优先（BYOK）的 AI 角色扮演聊天桌面应用",
   "scripts": {
+    "verify": "node scripts/verify-design-doc.mjs && node scripts/verify-demo.mjs",
     "verify:design-doc": "node scripts/verify-design-doc.mjs",
+    "verify:demo": "node scripts/verify-demo.mjs",
     "test": "node --test \"test/**/*.test.mjs\""
   }
 }
