@@ -21,9 +21,13 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
+      "@core/*.js": ["src/core/*"],
       "@core/*": ["src/core/*"],
+      "@shared/*.js": ["src/shared/*"],
       "@shared/*": ["src/shared/*"],
+      "@main/*.js": ["src/main/*"],
       "@main/*": ["src/main/*"],
+      "@renderer/*.js": ["src/renderer/*"],
       "@renderer/*": ["src/renderer/*"]
     }
   }

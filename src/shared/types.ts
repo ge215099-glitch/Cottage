@@ -100,7 +100,8 @@ export interface Persona {
 export interface PersonaInput {
   id?: string;
   name: string;
-  description: string;
+  /** 省略时按空字符串落库 */
+  description?: string;
   avatarPath?: string | null;
   isDefault?: boolean;
 }

@@ -22,7 +22,9 @@ export default defineConfig({
     globals: true,
     // 默认纯 Node；组件测试文件用 `// @vitest-environment jsdom` 单独切换。
     environment: 'node',
-    include: ['test/**/*.test.{ts,tsx,mjs}'],
+    // 只收 .ts/.tsx：仓库里既有的 `verify-*.test.mjs` 是零依赖校验器测试，
+    // 由 `node --test` 驱动（见 package.json 的 test 脚本），不重复纳入 vitest。
+    include: ['test/**/*.test.{ts,tsx}'],
     exclude: ['test/**/*.e2e.ts', 'node_modules/**'],
     restoreMocks: true,
   },

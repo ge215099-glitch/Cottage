@@ -16,7 +16,9 @@
     "verify:demo": "node scripts/verify-demo.mjs",
     "verify:tech-stack": "node scripts/verify-tech-stack.mjs",
     "verify:boundaries": "node scripts/verify-boundaries.mjs",
-    "test": "vitest run",
+    "test": "npm run test:unit && npm run test:docs",
+    "test:unit": "vitest run",
+    "test:docs": "node --test \"test/**/*.test.mjs\"",
     "test:watch": "vitest",
     "postinstall": "node scripts/rebuild-native.mjs --quiet"
   },
