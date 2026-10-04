@@ -1,0 +1,169 @@
+/* 菜单 / 对话框 / toast（UI 文档第 4.4 / 4.5 / 4.7 节）。 */
+
+/* 浮层挂在 body 的 Portal 上，不被侧栏 overflow 裁切 */
+.overlay-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.overlay-root > * {
+  pointer-events: auto;
+}
+
+.menu {
+  position: fixed;
+  min-width: 200px;
+  padding: 5px;
+  border-radius: var(--radius-menu);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-menu);
+  animation: menuIn var(--motion-menu) var(--motion-ease);
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.menu button {
+  width: 100%;
+  height: 32px;
+  border-radius: 7px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  background: var(--surface-hover);
+}
+
+.menu button .k {
+  margin-left: auto;
+  font: 11px/1 var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+.menu button.danger {
+  color: var(--danger);
+}
+
+.menu hr {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: 5px 4px;
+}
+
+/* ---- 对话框 ---- */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim);
+  display: grid;
+  place-items: center;
+  animation: menuIn var(--motion-menu) var(--motion-ease);
+}
+
+.dialog {
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  border-radius: 14px;
+  background: var(--surface-overlay);
+  padding: 18px;
+  box-shadow: var(--shadow-menu);
+  border: 1px solid var(--border-subtle);
+}
+
+.dialog h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.dialog p {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 22px;
+}
+
+.dialog .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialog .actions .btn {
+  height: 32px;
+  width: auto;
+}
+
+.dialog .actions .btn.confirm-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.dialog .actions .btn.confirm-danger:hover {
+  opacity: 0.9;
+}
+
+.dialog .dialog-error {
+  margin-top: 10px;
+  font-size: var(--font-size-meta);
+  color: var(--danger);
+}
+
+/* 明文导出的一次性强提示 */
+.dialog.warn-dialog {
+  border-color: var(--warn);
+}
+
+.dialog .warn-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-row);
+  background: var(--warn-bg);
+  font-size: var(--font-size-meta);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+/* ---- toast ---- */
+.toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-menu);
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 13px;
+  animation: menuIn 140ms var(--motion-ease);
+}
+
+.toast.error {
+  color: var(--danger);
+}

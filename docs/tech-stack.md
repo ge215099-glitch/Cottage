@@ -55,7 +55,7 @@
 | 界面状态 | Zustand（按 UI 文档的 5 个 store 切片） | 跟随次版本 | 状态量小，无需 Redux 那套 |
 | 虚拟滚动 | `@tanstack/react-virtual` | 跟随次版本 | 会话列表定高、消息流变高都能覆盖 |
 | 浮层定位 | `@floating-ui/react` | 跟随次版本 | 菜单翻转/边界吸附，见 9.4 |
-| 样式 | Tailwind CSS v4，`@theme` 映射设计 token | 版本锁定（v4 迭代快） | token 单一来源，见 9.7 |
+| 样式 | `src/renderer/styles/tokens.css` 声明 CSS 自定义属性 + 手写组件样式表 | 自有代码 | token 单一来源，见 9.7 与本节下方的勘误 |
 | Markdown | `react-markdown` + `remark-gfm` + `rehype-sanitize` | 跟随次版本 | 模型输出必须消毒 |
 | 测试 | `vitest` + `@testing-library/react` + `playwright` | 跟随次版本 | 三层分工见第 11 节 |
 | 包管理 | pnpm | 跟随最新稳定 | 原生模块 + workspace 友好 |
@@ -425,9 +425,25 @@ UI 文档对菜单提了明确时序（180ms 宽限期、锚点切换不闪断�
 
 ### 9.6 样式与 token 单一来源
 
-- 设计 token（UI 文档第 8 节与 11 节）落在一个 `tokens.css`，以 CSS 自定义属性声明深浅两套；Tailwind v4 用 `@theme` 映射到这些变量。
-- 组件里**禁止出现硬编码颜色/时长**（动效 120 / 180 / 200ms 也来自 token）。
+- 设计 token（UI 文档第 8 节与 11 节）落在一个 `src/renderer/styles/tokens.css`，
+  以 CSS 自定义属性声明深浅两套（`html[data-theme="dark"]` 覆盖同名变量）。
+- 组件样式表（`base / layout / sidebar / chat / panel / pages / overlays.css`）**只允许引用变量**，
+  禁止出现硬编码颜色；动效 120 / 180 / 200 / 160ms 也来自 token（`--motion-*`）。
 - 归档消息的"仅靠降透明度区分"也走 token（UI 文档验收项 26），不写成一次性样式。
+
+> **勘误（v1.0 修订）：本方案原定用 Tailwind v4 的 `@theme` 映射 token，实现时改为
+> 手写 CSS 自定义属性 + 手写组件样式表。** 理由与代价都写在这里，便于将来重新评估：
+>
+> - 原目标只有一条：**token 单一来源**。而 Tailwind v4 的 `@theme` 本身就是
+>   "把 CSS 自定义属性声明一遍再映射"——对本案的设计 token 集合来说，
+>   它是在同一件事上多加一层构建期转换，没有增加新的表达能力。
+> - 本案 UI 是"三栏固定宽度 + 少量阈值状态（75% / 80%）+ 两个主题"，没有响应式栅格、
+>   没有设计系统规模的工具类复用需求；tokens.css 直接声明变量已经满足单一来源。
+> - 代价（必须承认）：失去了原子类的书写便利，组件样式表比 Tailwind 写法更长。
+>   如果后续 UI 规模明显变大、出现大量重复的间距/颜色组合，重新引入 Tailwind
+>   并让 `@theme` 指向同一份 token 变量即可，**token 文件不需要改**。
+> - 这条例外只针对 Tailwind。`@tanstack/react-virtual`、`@floating-ui/react`、`Zustand`
+>   三项按原方案执行（它们在 9.1 / 9.4 里各自解决了具体问题，不是样式体系重复）。
 
 ---
 

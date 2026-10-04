@@ -42,8 +42,15 @@
 
 **密钥安全**
 - api_key 用 Electron `safeStorage` 加密后存库（字段 `api_key_enc`），明文只存在于 main 进程内存。
-- 只用**异步 API**（`encryptStringAsync` / `decryptStringAsync`），且必须在 `app` ready 之后调用。
-- 解密返回 `shouldReEncrypt` 时自动回写，支持系统密钥轮换。
+- **只用 `safeStorage` 自身的 API，且必须在 `app` ready 之后调用。**
+  > 实现勘误（v1.0 修订）：本节原写"只用异步 API（`encryptStringAsync` /
+  > `decryptStringAsync`）"。核实结论是 **Electron 并不存在这两个 API**：
+  > `safeStorage` 只提供同步的 `encryptString` / `decryptString`，
+  > 也没有 `shouldReEncrypt` 返回值（已逐一检查 electron 34/35/36/37/38/39 的
+  > 类型定义）。因此实现改为：用同步原语，但**对外仍暴露 Promise**，
+  > 以便将来补上异步 API 时调用方零改动；"密钥轮换后回写"改由密文的
+  > **版本前缀**实现（读到无前缀的历史值即按旧格式解密并标记回写）。
+- 解密失败（系统密钥环变更）必须给出可读提示并要求重新填写，**不得**把底层异常原文抛出。
 - Linux 降级路径：`getSelectedStorageBackend()` 返回 `basic_text` 时说明本机无可用密钥环、Key 实际未受保护，**UI 必须显示警告**。
 - Key 永不进入日志、错误信息、导出文件的默认范围。
 

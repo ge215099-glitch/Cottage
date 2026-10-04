@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      CSP 由主进程的 onHeadersReceived 统一下发（src/main/window.ts），
+      这里不重复声明，避免两处策略不一致时难以判断以哪个为准。
+    -->
+    <title>Cottage</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

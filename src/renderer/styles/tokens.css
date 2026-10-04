@@ -1,0 +1,110 @@
+/*
+ * Cottage 设计 token —— 单一来源。
+ *
+ * 数值全部来自 docs/ui-design-sidebar-chat.md 第 8 节与
+ * docs/ui-design-conversation.md 第 11 节，两边是同一套。
+ *
+ * 深浅两套主题在这里一次性声明；组件样式表只允许引用变量，
+ * 不得出现硬编码颜色。`scripts/verify-boundaries.mjs` 之外，
+ * 组件测试也会断言关键 token 存在。
+ */
+
+:root {
+  /* ---- 颜色：浅色 ---- */
+  --bg-app: #ffffff;
+  --bg-sidebar: #f9f9f9;
+  --surface-hover: rgba(0, 0, 0, 0.045);
+  --surface-active: rgba(0, 0, 0, 0.075);
+  --surface-overlay: #ffffff;
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --text-primary: #0d0d0d;
+  --text-secondary: #5d5d5d;
+  --text-tertiary: #8f8f8f;
+  --accent: #0d0d0d;
+  --accent-soft: #0a84ff;
+  --danger: #d93025;
+  --warn: #c77700;
+  --bubble-user: #f1f1f1;
+  --danger-bg: rgba(217, 48, 37, 0.08);
+  --warn-bg: rgba(199, 119, 0, 0.1);
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.14);
+  --overlay-scrim: rgba(0, 0, 0, 0.28);
+
+  /* 占用条分段色（与右栏明细的颜色一一对应） */
+  --seg-system: #8ab4f8;
+  --seg-fewshot: #7fc8a9;
+  --seg-summary: #f0b46b;
+  --seg-history: #a5a5f5;
+  --seg-input: #d5d5d5;
+
+  /* ---- 尺寸 ---- */
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 56px;
+  --panel-width: 320px;
+  --panel-width-narrow: 290px;
+  --content-max-width: 720px;
+  --bubble-max-width: 560px;
+  --row-height: 36px;
+  --topbar-height: 48px;
+  --composer-max-height: 200px;
+
+  /* ---- 间距 ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  /* ---- 圆角 ---- */
+  --radius-row: 8px;
+  --radius-menu: 10px;
+  --radius-card: 12px;
+  --radius-button: 10px;
+
+  /* ---- 字体 ---- */
+  --font-sans: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+  --font-size-list: 13px;
+  --line-height-list: 20px;
+  --font-size-group: 12px;
+  --line-height-group: 16px;
+  --font-size-body: 15px;
+  --line-height-body: 26px;
+  --font-size-meta: 12px;
+
+  /* ---- 动效（组件里不得写死毫秒数） ---- */
+  --motion-fade: 120ms;
+  --motion-menu: 120ms;
+  --motion-reorder: 200ms;
+  --motion-panel: 160ms;
+  --motion-ease: ease-out;
+}
+
+html[data-theme='dark'] {
+  --bg-app: #191919;
+  --bg-sidebar: #171717;
+  --surface-hover: rgba(255, 255, 255, 0.055);
+  --surface-active: rgba(255, 255, 255, 0.09);
+  --surface-overlay: #252525;
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --text-primary: #ececec;
+  --text-secondary: #b4b4b4;
+  --text-tertiary: #8f8f8f;
+  --accent: #ffffff;
+  --accent-soft: #4da3ff;
+  --danger: #ff6b60;
+  --warn: #e0a33a;
+  --bubble-user: #2f2f2f;
+  --danger-bg: rgba(255, 107, 96, 0.12);
+  --warn-bg: rgba(224, 163, 58, 0.14);
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.4);
+  --overlay-scrim: rgba(0, 0, 0, 0.44);
+
+  --seg-system: #6f9be0;
+  --seg-fewshot: #66a98c;
+  --seg-summary: #cf9750;
+  --seg-history: #8b8bd8;
+  --seg-input: #6f6f6f;
+}

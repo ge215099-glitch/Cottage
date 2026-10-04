@@ -77,6 +77,18 @@ export const SHARED_FORBIDDEN_IMPORTS = [
   { re: /from\s+['"]node:fs['"]/, why: 'shared 不得做 IO' },
 ];
 
+/**
+ * `src/` 全目录禁止引用 `demo/`（技术方案验收项 15/16）。
+ *
+ * demo 是"命令式 DOM 操作"的交互参考，与 React 状态模型不同构。
+ * 一旦有人图省事 import 或复制它的脚本，就会出现两套真相：
+ * 界面看起来对，但状态来源说不清。这条在 CI 阶段直接拦住。
+ */
+export const DEMO_REFERENCE_PATTERNS = [
+  { re: /\.\.?\/+demo\//, why: 'src 下不得引用 demo/（它只作人工对照，不参与构建）' },
+  { re: /['"]demo\//, why: 'src 下不得引用 demo/ 的路径字符串' },
+];
+
 /** 递归收集文件（跳过 node_modules / out / .git / demo）。 */
 export function collectFiles(dir, acc = []) {
   let entries;
@@ -124,6 +136,13 @@ export function checkImports(text, rel) {
         : [];
   for (const { re, why } of rules) {
     if (re.test(text)) issues.push(`${rel}：${why}（匹配 ${re}）`);
+  }
+
+  // demo 引用检查对 src 下所有文件生效
+  if (rel.startsWith('src/')) {
+    for (const { re, why } of DEMO_REFERENCE_PATTERNS) {
+      if (re.test(text)) issues.push(`${rel}：${why}（匹配 ${re}）`);
+    }
   }
   return issues;
 }
