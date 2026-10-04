@@ -35,8 +35,8 @@ export const REQUIRED_PATTERNS = [
   [/\.conv-row:hover \.row-menu-btn[^}]*opacity:1/, '⋯ 必须悬停/聚焦才出现'],
   [/opacity:0;color:var\(--text-secondary\);transition:opacity/, '⋯ 必须有常驻占位（防标题位移）'],
   [/width:26px;height:26px/, '⋯ 命中区必须固定尺寸'],
-  [/group-title/, '必须有分组标题（今天/昨天/前 7 天/更早/已置顶）'],
-  [/已置顶/, '必须有已置顶分组'],
+  [/group-title/, '必须有分组标题（仅「已置顶」段）'],
+  [/已置顶/, '必须有已置顶段'],
   [/pinnedAt/, '置顶必须记录 pinnedAt'],
   [/不修改 updated|注意：不修改/, '置顶不得改写 updated（防污染"今天"分组）'],
   [/删除对话？/, '必须有删除确认对话框'],
@@ -71,6 +71,8 @@ export const FORBIDDEN_PATTERNS = [
   [/resizer/i, '侧栏不做拖拽调宽（只保留拉出/收起）'],
   [/cursor:col-resize/i, '不得出现调宽光标'],
   [/已归档/, '消息上不得出现"已归档"提示'],
+  [/\bdayKey\b/, '列表不按时间分组（不得再有时间分组逻辑）'],
+  [/["'](今天|昨天|前 7 天|更早)["']/, '列表不得出现时间分组标题'],
   [/\bavatar\b|avatarHTML|class="big-avatar"/i, '界面不使用头像（消息、对话列表、空态、右栏均无）'],
 ];
 

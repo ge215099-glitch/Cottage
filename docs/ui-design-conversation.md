@@ -281,7 +281,7 @@ conversations(id, title, character_id, persona_id, provider_id, model,
 
 - 排序：`ORDER BY pinned_at IS NOT NULL DESC, COALESCE(pinned_at, 0) DESC, updated_at DESC`。
 - 索引：`conversations(pinned_at DESC)`（配合已有 `conversations(updated_at DESC)`）。
-- **写 `pinned_at` 时不更新 `updated_at`**；这一条要落进 DAO 层的测试，否则置顶会让旧会话污染"今天"分组。
+- **写 `pinned_at` 时不更新 `updated_at`**；这一条要落进 DAO 层的测试。否则取消置顶后，一条上个月的会话会因为 `updated_at` 被刷新而跳到列表最前面，把本该在最上面的近期会话挤下去。
 - 迁移：新增一条顺序迁移（`ALTER TABLE conversations ADD COLUMN pinned_at INTEGER`），遵守"迁移从第一天存在"（第 4 节约束）。
 
 ### 9.2 交互
@@ -355,7 +355,7 @@ conversations(id, title, character_id, persona_id, provider_id, model,
 19. 右栏宽度恒为 320px（1024–1280px 档为 290px）；页面不存在拖拽手柄，`cursor: col-resize` 检索结果为 0；`⌘I` 只在两态间切换且不产生中间宽度。
 20. 双击顶栏标题进入行内重命名，与左栏行为一致（Esc 回滚、空标题不提交）。
 21. 置顶入口（左栏菜单与顶栏 `📌`）状态同步；置顶后进入「已置顶」组首位。
-22. 置顶操作不改变 `updated_at`（DAO 层单测 + UI 上不出现于"今天"组）。
+22. 置顶操作不改变 `updated_at`（DAO 层单测）；取消置顶后该会话回到其余会话中按 `updated_at DESC` 的正确位置（列表不按时间分组，见左栏文档 5.1）。
 23. 取消置顶后回到正确的时间分组位置，位移动画 200ms 内完成。
 24. 删除当前会话的入口在右栏「数据」与左栏菜单行为一致（同一确认组件）。
 25. 界面无头像：消息区、空态、右栏「角色」标签内的头像容器/`img` 数量为 0；角色身份仅由名字文本呈现。

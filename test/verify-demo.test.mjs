@@ -41,7 +41,8 @@ test('Demo 覆盖设计稿的关键交互', () => {
     ['⋯ 常驻占位', /opacity:0;color:var\(--text-secondary\);transition:opacity/],
     ['删除二次确认', /删除对话？/],
     ['不可撤销提示', /此操作不可撤销/],
-    ['已置顶分组', /已置顶/],
+    ['已置顶段', /已置顶/],
+    ['不按时间分组', /不按时间分组|只有「已置顶」/],
     ['置顶落字段', /pinnedAt/],
     ['右栏四标签', /data-tab="data"/],
     ['常驻占用条', /id="meter"/],
@@ -68,6 +69,14 @@ test('侧栏只拉出/收起，不做拖拽调宽', () => {
 test('界面不出现任何头像，也没有"已归档"提示', () => {
   assert.doesNotMatch(realHtml, /avatar/i);
   assert.doesNotMatch(realHtml, /已归档/);
+});
+
+test('对话列表不按时间分组，只保留「已置顶」段', () => {
+  assert.doesNotMatch(realHtml, /dayKey/, '时间分组函数应已删除');
+  for (const label of ['今天', '昨天', '前 7 天', '更早']) {
+    assert.doesNotMatch(realHtml, new RegExp(`"${label}"`), `列表不应再有「${label}」段`);
+  }
+  assert.match(realHtml, /showHead\("已置顶"\)/);
 });
 
 test('Demo 的关键元素 id 一个都不能少', () => {

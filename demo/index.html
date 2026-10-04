@@ -749,15 +749,6 @@ html[data-theme="dark"] .btn.primary{color:#141414}
 
   /* ---------------- 工具 ---------------- */
   function esc(s){ return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
-  function dayKey(ts){
-    const d = new Date(ts), n = new Date();
-    const startOf = x => { const y = new Date(x); y.setHours(0,0,0,0); return +y; };
-    const diff = Math.round((startOf(n) - startOf(d)) / DAY);
-    if (diff <= 0) return "今天";
-    if (diff === 1) return "昨天";
-    if (diff <= 6) return "前 7 天";
-    return "更早";
-  }
   function sorted(){
     const q = state.query.trim().toLowerCase();
     const list = conversations.filter(c => !q || c.title.toLowerCase().includes(q));
@@ -796,35 +787,31 @@ html[data-theme="dark"] .btn.primary{color:#141414}
         ${state.query ? "没有匹配的对话" : '还没有对话　<a href="#" id="empty-new" style="color:var(--accent-soft)">新建一个 →</a>'}</div>`;
       return;
     }
-    const groups = new Map();
-    for (const c of list){
-      const key = c.pinned ? "已置顶" : (state.query ? "搜索结果" : dayKey(c.updated));
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(c);
-    }
-    const order = ["已置顶","今天","昨天","前 7 天","更早","搜索结果"];
+    // 不按时间分组：只有「已置顶」（有置顶时）与其余全部会话两段
+    const pinnedRows = list.filter(c => c.pinned);
+    const rest = list.filter(c => !c.pinned);
+    const showHead = (title) => `<div class="group-title"><span>${title}</span></div>`;
     let html = "";
-    for (const key of order){
-      if (!groups.has(key)) continue;
-      const rows = groups.get(key);
-      html += state.query
-        ? `<div class="group-title"><span>找到 ${list.length} 个对话</span></div>`
-        : `<div class="group-title"><span>${key}</span>${key==="已置顶"&&rows.length>3?`<span class="caret">${ICON.chev}</span>`:""}</div>`;
-      for (const c of rows){
-        const active = c.id === state.activeId;
-        const streaming = state.streaming && state.streaming.convId === c.id;
-        const title = state.query
-          ? esc(c.title).replace(new RegExp("("+state.query.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","ig"), "<b>$1</b>")
-          : esc(c.title);
-        html += `<div class="conv-row${active?" active":""}" role="listitem" tabindex="0" data-id="${c.id}"
+    if (state.query){
+      html += `<div class="group-title"><span>找到 ${list.length} 个对话</span></div>`;
+    } else if (pinnedRows.length){
+      html += showHead("已置顶");
+    }
+    const rowHTML = c => {
+      const active = c.id === state.activeId;
+      const streaming = state.streaming && state.streaming.convId === c.id;
+      const title = state.query
+        ? esc(c.title).replace(new RegExp("("+state.query.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","ig"), "<b>$1</b>")
+        : esc(c.title);
+      return `<div class="conv-row${active?" active":""}" role="listitem" tabindex="0" data-id="${c.id}"
             aria-label="对话：${esc(c.title)}"${active?' aria-current="true"':''}>
           <span class="conv-title">${title}</span>
           ${streaming?'<span class="stream-dot" title="生成中"></span>':""}
           <button class="row-menu-btn" data-menu="${c.id}" aria-haspopup="menu" aria-label="更多操作：${esc(c.title)}" title="更多操作">${ICON.dots}</button>
         </div>`;
-      }
-      if (state.query && key === "搜索结果") break;
-    }
+    };
+    for (const c of pinnedRows) html += rowHTML(c);
+    for (const c of rest) html += rowHTML(c);
     box.innerHTML = html;
     const en = $("#empty-new");
     if (en) en.addEventListener("click", e => { e.preventDefault(); newChat(); });

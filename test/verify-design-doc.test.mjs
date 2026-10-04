@@ -91,6 +91,14 @@ test('章节缺失或编号断裂会被检出', () => {
   assert.ok(renumbered.issues.some((i) => i.includes('编号不连续')));
 });
 
+test('列表不按时间分组的约定必须写在文档里', () => {
+  assert.match(realText, /不按时间分组/);
+  assert.match(realText, /只有两段/);
+  const result = patchSidebar((t) => t.replaceAll('不按时间分组', '按时间走').replaceAll('只有两段', '分成若干段'));
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((i) => i.includes('不按时间分组')), result.issues.join('\n'));
+});
+
 test('占位内容会被检出', () => {
   const result = patchSidebar((t) => `${t}\n\n## 附：待补\n\nTODO: 补充动效细节\n`);
   assert.equal(result.ok, false);
