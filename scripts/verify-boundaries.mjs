@@ -29,11 +29,28 @@ const repoRoot = process.argv[2]
 // 本文件自身需要豁免编码检查：它必须保留真实的误码样例，否则测不出校验器有没有用。
 // verify-boundaries:allow-mojibake
 
-/** 需要扫描的源码目录。 */
-export const SOURCE_DIRS = ['src', 'scripts', 'test'];
+/**
+ * 需要扫描的源码目录。
+ *
+ * `'.'` 表示扫描仓库根**当前层级**的文件（不递归进其它目录）——这样
+ * `.gitignore` 这类根配置文件也会被编码检查覆盖到。
+ *
+ * 为什么要专门加这一条：这条规则是踩过坑之后补的。用 PowerShell 的
+ * `Add-Content`/`Set-Content` 往 `.gitignore` 追加内容时丢了编码（Windows
+ * PowerShell 5.1 默认按本地代码页写），文件里出现非法 UTF-8 字节。
+ * 而当时校验器只扫 `src / scripts / test` 下的源码扩展名，`.gitignore`
+ * 既不在目录里、也不在扩展名白名单里，于是**损坏的文件顺利通过全部校验**。
+ */
+export const SOURCE_DIRS = ['src', 'scripts', 'test', '.'];
 
 /** 只扫这些扩展名。 */
 export const SCANNED_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.mjs', '.js', '.html', '.css', '.md'];
+
+/** 根目录不递归扫描时，额外纳入的无扩展名文件。 */
+export const SCANNED_ROOT_FILES = ['.gitignore', '.gitattributes', '.editorconfig', '.npmrc'];
+
+/** 递归扫描时跳过的目录名。 */
+const SKIP_DIRS = new Set(['node_modules', 'out', 'dist', 'build', 'coverage', '.git', 'demo']);
 
 /** 替换字符：任何一种编码转换出错都会留下它。 */
 export const REPLACEMENT_CHAR = '\uFFFD';
@@ -89,8 +106,14 @@ export const DEMO_REFERENCE_PATTERNS = [
   { re: /['"]demo\//, why: 'src 下不得引用 demo/ 的路径字符串' },
 ];
 
-/** 递归收集文件（跳过 node_modules / out / .git / demo）。 */
-export function collectFiles(dir, acc = []) {
+/**
+ * 递归收集文件（跳过 node_modules / out / .git / demo）。
+ *
+ * 特殊处理 `'.'`：只取仓库根**当前层级**的文件，不递归——否则会顺着根目录
+ * 一路走进 `src`、`test`（重复扫描）以及 `.git` 内部（体积巨大且无意义）。
+ */
+export function collectFiles(dir, acc = [], options = {}) {
+  const rootOnly = options.rootOnly === true;
   let entries;
   try {
     entries = readdirSync(dir);
@@ -98,20 +121,37 @@ export function collectFiles(dir, acc = []) {
     return acc;
   }
   for (const entry of entries) {
-    if (entry === 'node_modules' || entry === 'out' || entry === '.git' || entry === 'dist') continue;
+    if (SKIP_DIRS.has(entry)) continue;
     const full = path.join(dir, entry);
-    const stat = statSync(full);
-    if (stat.isDirectory()) {
-      collectFiles(full, acc);
+    let stat;
+    try {
+      stat = statSync(full);
+    } catch {
       continue;
     }
-    if (SCANNED_EXTENSIONS.includes(path.extname(entry))) acc.push(full);
+    if (stat.isDirectory()) {
+      if (!rootOnly) collectFiles(full, acc, options);
+      continue;
+    }
+    // 根目录的额外文件（无扩展名）也纳入
+    const isExtraRootFile = rootOnly && SCANNED_ROOT_FILES.includes(entry);
+    if (!SCANNED_EXTENSIONS.includes(path.extname(entry)) && !isExtraRootFile) continue;
+    acc.push(full);
   }
   return acc;
 }
 
-/** 检查一个文件的编码是否可信。 */
-export function checkEncoding(text, rel) {
+/**
+ * 检查一个文件的编码是否可信。
+ *
+ * @param text 已按 UTF-8 解码的内容
+ * @param rel  相对路径（用于报错定位）
+ * @param bytes 可选：原始字节。传入时会额外检查两件解码后看不见的事：
+ *   - **替换字符 U+FFFD 已经发生了有损替换**，原始字节里的非法序列反而看不出来；
+ *   - **BOM**：某些编辑器/工具会加上 UTF-8 BOM，它会让首行内容带上不可见字符
+ *     （例如 `.gitignore` 的第一条规则会失效）。
+ */
+export function checkEncoding(text, rel, bytes = null) {
   const issues = [];
   if (text.includes(REPLACEMENT_CHAR)) {
     issues.push(`${rel}：出现替换字符 U+FFFD，文件编码已损坏`);
@@ -119,6 +159,16 @@ export function checkEncoding(text, rel) {
   for (const marker of MOJIBAKE_MARKERS) {
     if (text.includes(marker)) {
       issues.push(`${rel}：出现 UTF-8 误码特征「${marker}」，文件中文已被写坏`);
+    }
+  }
+  if (bytes && Buffer.isBuffer(bytes)) {
+    // 非法 UTF-8 序列的检测：重新编回字节再解一次，看是否稳定
+    const roundTrip = Buffer.from(text, 'utf8');
+    if (!roundTrip.equals(bytes)) {
+      issues.push(`${rel}：不是合法的 UTF-8（存在非法字节序列）`);
+    }
+    if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+      issues.push(`${rel}：含 UTF-8 BOM，会让首行内容带上不可见字符`);
     }
   }
   return issues;
@@ -150,16 +200,21 @@ export function checkImports(text, rel) {
 export function verifyBoundaries(root = repoRoot) {
   const issues = [];
   const files = [];
-  for (const dir of SOURCE_DIRS) files.push(...collectFiles(path.join(root, dir)));
+  for (const dir of SOURCE_DIRS) {
+    // '.' 特殊处理：只扫仓库根当前层级的文件，不递归（避免重复扫 src/test 与 .git）
+    const rootOnly = dir === '.';
+    files.push(...collectFiles(path.join(root, dir), [], { rootOnly }));
+  }
 
   let scanned = 0;
   for (const file of files) {
     const rel = path.relative(root, file).split(path.sep).join('/');
-    const text = readFileSync(file, 'utf8');
+    const bytes = readFileSync(file);
+    const text = bytes.toString('utf8');
     scanned += 1;
     // 逐文件豁免：只有校验器自身的测试需要（它必须内含真实误码样例）。
     if (!text.includes(ENCODING_OPT_OUT)) {
-      issues.push(...checkEncoding(text, rel));
+      issues.push(...checkEncoding(text, rel, bytes));
     }
     issues.push(...checkImports(text, rel));
   }

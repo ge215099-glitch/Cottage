@@ -50,8 +50,9 @@ test('真实仓库通过编码与依赖边界校验', () => {
   assert.ok(result.stats.files >= 20, '应扫描到全部源码文件');
 });
 
-test('扫描范围覆盖 src / scripts / test', () => {
-  assert.deepEqual(SOURCE_DIRS, ['src', 'scripts', 'test']);
+test('扫描范围覆盖 src / scripts / test 与仓库根当前层级', () => {
+  // '.' 是有意加进来的：它让 .gitignore 这类根配置文件也进入编码检查
+  assert.deepEqual(SOURCE_DIRS, ['src', 'scripts', 'test', '.']);
   const files = collectFiles(path.join(repoRoot, 'src'));
   assert.ok(files.length >= 10, `src 下应有多个文件，实际 ${files.length}`);
   assert.ok(
@@ -78,6 +79,68 @@ test('UTF-8 被写坏的中文会被检出', () => {
 test('正常中文与英文注释不会被误报', () => {
   const ok = '// 这是正常的中文注释：变量替换与 token 计数\nconst a = 1;\n';
   assert.deepEqual(checkEncoding(ok, 'src/x.ts'), []);
+});
+
+/* ---------------- 编码：非法字节与 BOM ---------------- */
+
+test('非法 UTF-8 字节会被检出（此前只有 U+FFFD 检查，漏掉了这类）', () => {
+  // 构造一段非法 UTF-8 字节：这正是用 PowerShell 的 Add-Content 追加内容时
+  // 会产生的损坏形态（中文被按本地代码页写出去，高字节单独出现）。
+  const invalid = Buffer.from([0x2f, 0x2f, 0x20, 0xb4, 0xe4, 0xca, 0xb1, 0x0a]);
+  const asText = invalid.toString('utf8');
+
+  // 前提校验：这段字节确实不是合法 UTF-8（否则用例本身没有意义）
+  assert.equal(
+    Buffer.from(asText, 'utf8').equals(invalid),
+    false,
+    '构造的样本应当不是合法 UTF-8',
+  );
+
+  const issues = checkEncoding(asText, '.gitignore', invalid);
+  assert.ok(
+    issues.some((i) => i.includes('不是合法的 UTF-8')),
+    `应报非法 UTF-8，实际：${issues.join('；')}`,
+  );
+  // 有损解码本身也会留下替换字符，两条都该报出来
+  assert.ok(issues.some((i) => i.includes('U+FFFD')), issues.join('；'));
+});
+
+test('合法 UTF-8 的原始字节不会被误报为非法', () => {
+  const bytes = Buffer.from('# ---- 临时草稿 ----\nCOMMIT_MSG*\n', 'utf8');
+  assert.deepEqual(checkEncoding(bytes.toString('utf8'), '.gitignore', bytes), []);
+});
+
+test('UTF-8 BOM 会被检出（它会让首行规则悄悄失效）', () => {
+  const bytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('a\n', 'utf8')]);
+  const issues = checkEncoding(bytes.toString('utf8'), '.gitignore', bytes);
+  assert.ok(issues.some((i) => i.includes('BOM')), issues.join('；'));
+});
+
+test('不传 bytes 时只做文本级检查（向后兼容）', () => {
+  assert.deepEqual(checkEncoding('普通内容', 'x.ts'), []);
+});
+
+/* ---------------- 扫描范围：根目录配置文件 ---------------- */
+
+test('.gitignore 在扫描范围内（这正是漏掉过一次的地方）', () => {
+  const rootFiles = collectFiles(repoRoot, [], { rootOnly: true }).map((f) =>
+    path.relative(repoRoot, f).split(path.sep).join('/'),
+  );
+  assert.ok(rootFiles.includes('.gitignore'), `根扫描应包含 .gitignore，实际：${rootFiles.join(',')}`);
+  // 根扫描必须只扫当前层级，不能递归进 src
+  assert.ok(
+    !rootFiles.some((f) => f.startsWith('src/')),
+    '根扫描不应递归进 src',
+  );
+});
+
+test('根目录扫描跳过了 node_modules / out / .git', () => {
+  const rootFiles = collectFiles(repoRoot, [], { rootOnly: true }).map((f) =>
+    path.relative(repoRoot, f).split(path.sep).join('/'),
+  );
+  for (const bad of ['node_modules', 'out', '.git']) {
+    assert.ok(!rootFiles.some((f) => f.startsWith(`${bad}/`)), `根扫描不应包含 ${bad}/`);
+  }
 });
 
 /* ---------------- 依赖边界 ---------------- */
