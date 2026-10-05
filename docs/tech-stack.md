@@ -314,6 +314,22 @@ DB（相对路径 avatars/lin-wan.png）
 受众是 renderer 的那一半（URL 拼装）放在 `src/shared/avatar-url.ts`，
 因为它不能 import `node:` 模块；解析与校验在 main 侧。
 
+### 6.6 PNG 角色卡的解析位置
+
+PNG 角色卡（SillyTavern 格式）把角色 JSON 放在 PNG 的文本块里，解析这一步**放在 `core`**：
+
+- `src/core/png-card.ts` 只依赖 `Uint8Array` / `DataView` / `TextDecoder` / `atob`，
+  **不 import 任何 `node:` 模块**——core 的零平台依赖约束不破，而且能直接在单测里
+  用代码合成的 PNG 覆盖各种坏情况（多文本块、坏 base64、长度字段被写坏、截断文件、
+  压缩块）。真实卡不在仓库里（近 1MB 的第三方内容），
+  改用 `test/real-card.test.ts` 这个**按环境变量启用的 live 测试**，
+  用 `COTTAGE_REAL_CARD=<路径>` 就能对真卡复验一遍。
+- 文件 IO、头像落盘与 DAO 组合放在 `src/main/services/character-import.ts`：
+  先入库拿到角色 id，再用 id 命名头像文件（用原文件名会有重名覆盖与非法字符两个问题），
+  最后把 `avatar_path` 写回。顺序固定，避免"库里有记录但文件没落盘"的半成品状态。
+- CSP 与协议那两条纪律见 6.5：读图仍然只能通过 `cottage-avatar://`，
+  导入侧没有任何"能读任意文件"的入口。
+
 ---
 
 ## 7. Provider 适配与流式生成

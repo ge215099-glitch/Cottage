@@ -76,6 +76,14 @@
 
 **导入导出**
 - 兼容 v2 / v3；`raw_json` 原样保存，导出时以 `raw_json` 为基底，只覆盖 Cottage 自己管理的字段 → 保证不丢第三方字段。
+- **导入支持 JSON 与 PNG 两种文件**。PNG 是 SillyTavern 的卡格式：角色数据藏在 PNG 的
+  `chara`（v2）/ `ccv3`（v3）**文本块**里（base64 编码的 JSON），图片本身即卡面图。
+  因此导入 PNG 时：JSON 走上面同一条解析路径（`raw_json` 承诺不被绕过），
+  **整张 PNG 存进 `userData/avatars/<角色 id>.png`**，相对路径写进 `characters.avatar_path`。
+  头像名用角色 id 而不是原文件名：稳定、唯一、不含用户输入，天然避开重名覆盖与非法字符。
+  一个文件里有多个文本块时按 **`ccv3` 优先于 `chara`、同级取第一个能解出 JSON 的**——
+  实测一张真卡里就有两个 `chara` 块（只有一个带 `character_book`），所以"取第一个"不够。
+  压缩过的块（`zTXt` / 压缩的 `iTXt`）暂不支持，会给出明确指引而不是笼统失败。
 - 自定义头像：文件存 `userData/avatars/`，库内存相对路径；导出时内联到 `extensions.cottage.avatar`。
 
 **可编辑字段**：名称、描述、性格、场景、开场白（first_mes）、备用开场白（alternate_greetings）、示例对话（mes_example）、system_prompt、post_history_instructions、tags。
