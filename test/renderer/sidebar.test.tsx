@@ -494,4 +494,19 @@ describe('行键盘导航（验收项 15）', () => {
     setup({ conversations: [makeConversation()] }, { conversationId: 'cnv_1' });
     expect(screen.getByRole('listitem').getAttribute('aria-current')).toBe('true');
   });
+
+  it('不在对话视图时，会话行不再显示选中态（会话本身仍保留）', () => {
+    // 回归锚点：以前只看 conversationId，于是停在角色库/设置页时会话行还亮着，
+    // 看起来像"当前页面是那个对话"。conversationId 必须保留——回对话时还得是它。
+    const { container } = setup(
+      { view: 'characters', conversations: [makeConversation()] },
+      { conversationId: 'cnv_1' },
+    );
+    const row = screen.getByRole('listitem');
+    expect(row.className).not.toContain('active');
+    expect(row.getAttribute('aria-current')).toBeNull();
+    expect(container.querySelectorAll('.conv-row.active')).toHaveLength(0);
+    // 状态没被改掉：回到对话视图后它依然是当前会话
+    expect(useChatStore.getState().conversationId).toBe('cnv_1');
+  });
 });

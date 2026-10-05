@@ -161,7 +161,14 @@ export function Sidebar({
   };
 
   const renderRow = (conversation: Conversation): JSX.Element => {
-    const active = conversation.id === activeId;
+    /*
+     * 选中高亮只在**对话视图**下显示。
+     *
+     * 之前它只看 `conversationId`，于是在角色库 / 人设 / 设置页时，会话行仍然亮着，
+     * 看起来像"当前页面是那个对话"，与实际主区不符。`conversationId` 本身要保留
+     * （回到对话时还是它），所以这只是渲染期的判断，不动状态。
+     */
+    const active = view === 'chat' && conversation.id === activeId;
     // 生成中的会话标题右侧带 8px 呼吸圆点；切换会话不打断生成
     const streaming = streamingId === conversation.id;
     const isRenaming = renamingId === conversation.id;
