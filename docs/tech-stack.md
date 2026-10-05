@@ -274,7 +274,8 @@
 | `sandbox` | `true` | 渲染进程按不可信内容对待（模型输出是外部输入） |
 | preload 暴露面 | 逐个方法显式暴露，不暴露 `ipcRenderer` 本身 | 通道白名单，未知通道由主进程拒绝 |
 | 入参校验 | 每个 handler 用 `shared` 的 zod schema 校验 | 渲染进程被 XSS 时也不能构造越权调用 |
-| CSP | `default-src 'self'`；`img-src 'self' data:`；禁止 `unsafe-eval` | 阻断模型输出里的外链图片与脚本 |
+| CSP | `default-src 'self'`；`img-src 'self' data: cottage-avatar:`；禁止 `unsafe-eval` | 阻断模型输出里的外链图片与脚本 |
+| 本地图片通道 | 自有协议 `cottage-avatar://`，handler 把 URL 解析进 `<userData>/avatars/` 并拒绝目录穿越、非白名单扩展名、畸形编码 | 角色库要显示卡面图，但**不能**为此放行 `file:`；放行的是协议，renderer 仍读不到任意本地文件（见 6.5） |
 | 外链 | `setWindowOpenHandler` 一律 `deny`；正文里的链接交给 `shell.openExternal`，仅允许 http/https | 防止在应用窗口内打开任意页面 |
 | 导航 | 拦截 `will-navigate`，只允许应用自身 | 同上 |
 | 错误结构 | 统一 `{ code, message, retryable, httpStatus? }`，message 经脱敏 | UI 要分三态展示（产品文档 3.1 / 3.7） |
@@ -286,6 +287,32 @@
 3. 日志、错误信息、异常堆栈、导出文件默认范围**均不含 Key**；日志脱敏在写日志的函数里统一做，而不是靠调用方自觉（验收项 3）。
 4. 连接测试失败时只回传 HTTP 状态与上游错误摘要，且摘要需过一遍 Key 脱敏（上游有时会把 Key 回显在错误里）。
 5. 导出明文配置包必须走二次确认 + 强提示，并在 UI 说明"safeStorage 密文绑定本机凭据，直接拷库到另一台机器无法解密"（产品文档 3.1）。
+
+### 6.5 本地图片通道（角色卡头像）
+
+角色库要显示卡面图，但生产 CSP 的 `img-src` 只有 `'self' data:`，`file://` 会被拦掉。
+这里刻意**不放行 `file:`**，而是开一个自有协议：
+
+```
+DB（相对路径 avatars/lin-wan.png）
+  → renderer 拼 cottage-avatar://local/avatars/lin-wan.png
+  → 主进程 protocol.handle 解析并校验
+  → 只允许命中 <userData>/avatars/ 之内的文件
+```
+
+三条纪律：
+
+1. **协议必须先登记为 privileged 且 `standard: true`**（在 `app.whenReady()` 之前），
+   否则 Electron 会把 URL 当成 opaque path，拿不到正常的 host/path，逐段校验就无从谈起。
+2. **路径校验是安全边界，必须与 electron 解耦并被单测覆盖**（`src/main/avatars.ts`）：
+   用 `path.relative` 判断解析结果是否落在 `avatars/` 之内，**不能用 `startsWith`**
+   （`<userData>/avatars-evil` 也是同前缀）。同时拒绝：别的 scheme/host、目录穿越
+   （含百分号编码形式）、白名单外的扩展名、NUL 字节、畸形编码。
+   威胁模型是"模型输出能被渲染成 HTML"——那段内容同样能构造这个 URL。
+3. 文件不存在即 404，**不跨目录回退**去找同名文件。
+
+受众是 renderer 的那一半（URL 拼装）放在 `src/shared/avatar-url.ts`，
+因为它不能 import `node:` 模块；解析与校验在 main 侧。
 
 ---
 
