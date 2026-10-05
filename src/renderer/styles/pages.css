@@ -135,6 +135,92 @@
   flex: 0 0 auto;
 }
 
+/* ---- 角色库：卡片网格（2:3 竖版；上面图片，下面名字，不显示描述） ---- */
+.char-grid {
+  display: grid;
+  /* 列宽自适应，避免固定列数在窄窗口下把卡片压扁 */
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: var(--space-4);
+}
+
+.char-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+
+.char-card-figure {
+  position: relative;
+  display: block;
+  width: 100%;
+  /* 2:3 竖版贴近角色卡美术；固定比例保证网格不会因为图片尺寸参差而跳动 */
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--surface-active);
+  border: 1px solid var(--border-subtle);
+}
+
+.char-card-figure img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 没有图片的角色卡：灰色色块 + 居中图标，不留空洞也不放默认头像 */
+.char-card-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-tertiary);
+  background: var(--surface-active);
+}
+
+.char-card:hover .char-card-figure,
+.char-card:focus-visible .char-card-figure {
+  border-color: var(--text-tertiary);
+}
+
+.char-card-fav {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-2);
+  font-size: var(--font-size-meta);
+  color: var(--warn);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.char-card-name {
+  font-size: var(--font-size-list);
+  line-height: var(--line-height-list);
+  /* 名字只留一行，长了省略：两行会让网格行高不齐 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 分类标签（角色详情弹窗里只读展示） ---- */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+}
+
 /* ---- 设置分区 ---- */
 .settings-section {
   margin-bottom: 28px;

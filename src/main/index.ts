@@ -17,17 +17,31 @@
  *   - 单窗口 + `requestSingleInstanceLock()`。
  *   - 主进程**不得吞异常**：未捕获异常必须落日志（已脱敏）并让 UI 可见。
  */
-import { BrowserWindow, app } from 'electron';
+import { BrowserWindow, app, protocol } from 'electron';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { EVENT } from '@shared/ipc.js';
+import { AVATAR_SCHEME } from '@shared/avatar-url.js';
 import { makeError } from '@core/providers/errors.js';
 import { log, recentLogLines } from './log.js';
 import { abortAll, createAppContext, emitEvent, type AppContext } from './context.js';
+import { resolveAvatarRequest } from './avatars.js';
 import { openBetterSqlite3Driver } from './db/better-sqlite3-driver.js';
 import { migrate } from './db/migrations/index.js';
 import { sweepStreamingMessages } from './db/dao/messages.js';
 import { registerIpc, setAppVersion } from './ipc/index.js';
 import { createMainWindow } from './window.js';
+
+/*
+ * 头像协议必须在 app ready **之前**登记为 privileged。
+ *
+ * `standard: true` 很关键：否则 `cottage-avatar://local/a/b.png` 会被当成 opaque path，
+ * URL 解析拿不到正常的 host/path，主进程侧的路径校验就没法按段判断。
+ * 这里只是声明协议身份，真正的文件读取在 ready 之后的 handler 里做。
+ */
+protocol.registerSchemesAsPrivileged([
+  { scheme: AVATAR_SCHEME, privileges: { standard: true, secure: true } },
+]);
 
 /** 单窗口引用：IPC 事件推送需要一个明确的收件人。 */
 let mainWindow: BrowserWindow | null = null;
@@ -88,6 +102,24 @@ async function bootstrap(): Promise<void> {
 
   // ---- 4. 注册 IPC ----
   registerIpc(ctx);
+
+  // ---- 4.5 头像协议：cottage-avatar:// → userData/avatars/ ----
+  // 只放行这一个目录，且由 resolveAvatarRequest 拒绝目录穿越与不在白名单的扩展名。
+  // 因此 renderer 拿到的是一个"能显示角色卡图片"的通道，而不是读任意本地文件的能力。
+  const userDataDir = app.getPath('userData');
+  protocol.handle(AVATAR_SCHEME, async (request) => {
+    const resolved = resolveAvatarRequest(userDataDir, request.url);
+    if (!resolved) return new Response(null, { status: 404 });
+    try {
+      const data = await readFile(resolved.filePath);
+      return new Response(data, {
+        status: 200,
+        headers: { 'content-type': resolved.contentType, 'cache-control': 'no-cache' },
+      });
+    } catch {
+      return new Response(null, { status: 404 });
+    }
+  });
 
   // ---- 5. 主进程未捕获异常必须可见 ----
   installGlobalErrorHandlers();

@@ -13,7 +13,9 @@ import type {
   Provider,
   ProviderTestResult,
 } from '@shared/types.js';
+import { buildAvatarUrl } from '@shared/avatar-url.js';
 import { Icons } from './Icons.js';
+import { CharacterDetailDialog } from './CharacterDetailDialog.js';
 
 /* ------------------------------------------------------------------ */
 /* 角色库                                                              */
@@ -46,6 +48,15 @@ export function CharactersPage({
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [editing, setEditing] = useState<Character | null>(null);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
+  /*
+   * 详情弹窗只记 id，角色对象从 props 实时推导：
+   * 收藏/编辑后 App 会重新拉列表，若缓存整个对象，弹窗里就会显示旧状态。
+   * 顺带解决了"角色被删掉后弹窗要自己关掉"——推导出来是 null 就自动关闭。
+   */
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const detailCharacter = detailId
+    ? (characters.find((c) => c.id === detailId) ?? null)
+    : null;
 
   useEffect(() => {
     // 搜索与标签筛选都交给主进程（那里能一次读全量并精确比标签）
@@ -124,73 +135,65 @@ export function CharactersPage({
         {visible.length === 0 ? (
           <div className="empty-page">还没有角色卡　点击「导入角色卡」添加一个</div>
         ) : (
-          <div className="card-list">
-            {visible.map((character) => (
-              <div className="card-row" key={character.id}>
-                <div className="card-main">
-                  <div className="card-name">
-                    {character.name}
+          /*
+           * 卡片网格（2:3 竖版）：上面是角色卡图片，下面是名字。
+           * 不显示描述——两个近名角色靠 `title` 悬停提示区分，信息没丢只是不占视觉。
+           * 卡片上的全部动作收进详情弹窗（见 CharacterDetailDialog）。
+           */
+          <div className="char-grid">
+            {visible.map((character) => {
+              const avatarUrl = buildAvatarUrl(character.avatarPath);
+              return (
+                <button
+                  type="button"
+                  key={character.id}
+                  className="char-card"
+                  onClick={() => setDetailId(character.id)}
+                  title={character.description || character.scenario || character.name}
+                  aria-label={`查看角色卡：${character.name}`}
+                >
+                  <span className="char-card-figure">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt="" />
+                    ) : (
+                      // 没有图片的角色卡：**纯灰色色块**，不放任何图标——
+                      // 放个占位小人等于引入了"默认头像"，与本项目的 P9 冲突
+                      <span className="char-card-placeholder" aria-hidden="true" />
+                    )}
                     {character.favorite ? (
-                      <span className="fav" title="已收藏">
+                      <span className="char-card-fav" title="已收藏" aria-hidden="true">
                         ★
                       </span>
                     ) : null}
-                  </div>
-                  <div className="card-desc">
-                    {character.description || character.scenario || '（没有描述）'}
-                  </div>
-                </div>
-                <div className="card-actions">
-                  <button
-                    type="button"
-                    className="btn"
-                    title="用这个角色开新对话"
-                    onClick={() => onNewConversation(character)}
-                  >
-                    新对话
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    title={character.favorite ? '取消收藏' : '收藏'}
-                    aria-label="收藏"
-                    onClick={() => onToggleFavorite(character)}
-                  >
-                    {Icons.star()}
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    title="编辑"
-                    aria-label="编辑角色卡"
-                    onClick={() => setEditing(character)}
-                  >
-                    {Icons.edit()}
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    title="导出"
-                    aria-label="导出角色卡"
-                    onClick={() => onExport(character)}
-                  >
-                    {Icons.export()}
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    title="删除"
-                    aria-label="删除角色卡"
-                    onClick={() => onDelete(character)}
-                  >
-                    {Icons.trash()}
-                  </button>
-                </div>
-              </div>
-            ))}
+                  </span>
+                  <span className="char-card-name">{character.name}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {detailCharacter ? (
+        <CharacterDetailDialog
+          character={detailCharacter}
+          onClose={() => setDetailId(null)}
+          onNewConversation={() => {
+            setDetailId(null);
+            onNewConversation(detailCharacter);
+          }}
+          onToggleFavorite={() => onToggleFavorite(detailCharacter)}
+          onEdit={() => {
+            setDetailId(null);
+            setEditing(detailCharacter);
+          }}
+          onExport={() => onExport(detailCharacter)}
+          onDelete={() => {
+            setDetailId(null);
+            onDelete(detailCharacter);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -42,8 +42,10 @@ describe('生产策略', () => {
     expect(scriptSrc).not.toContain('unsafe-inline');
   });
 
-  it('img-src 只允许 self 与 data:（阻断模型输出里的外链图片）', () => {
-    expect(map.get('img-src')).toBe("'self' data:");
+  it('img-src 只允许 self、data: 与自有头像协议（阻断模型输出里的外链图片）', () => {
+    // `cottage-avatar:` 是角色卡图片的通道；主进程 handler 会把 URL 限制在
+    // userData/avatars/ 之内，所以放宽的是协议而不是 file:
+    expect(map.get('img-src')).toBe("'self' data: cottage-avatar:");
   });
 
   it('锁掉 object / frame / media / base-uri / form-action', () => {
@@ -92,7 +94,7 @@ describe('开发策略：必须放行 HMR，且只放行 dev server', () => {
 
   it('即使宽松模式也保留那些安全指令', () => {
     expect(map.get('object-src')).toBe("'none'");
-    expect(map.get('img-src')).toBe("'self' data:");
+    expect(map.get('img-src')).toBe("'self' data: cottage-avatar:");
     expect(map.get('base-uri')).toBe("'none'");
     expect(map.get('form-action')).toBe("'none'");
   });

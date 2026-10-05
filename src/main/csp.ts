@@ -17,11 +17,17 @@
  * 注意：宽松只发生在**显式传入了 dev server 地址**时。没有这个地址就一律按
  * 生产策略下发，不会因为"忘了设环境变量"而静默放松安全策略。
  */
+import { AVATAR_SCHEME } from '@shared/avatar-url.js';
 
 /** 那些在两种模式下都一样的严格指令。 */
 const BASE_DIRECTIVES = {
-  // 模型输出里的外链图片一律阻断（只允许自站与 data:）
-  imgSrc: "img-src 'self' data:",
+  /*
+   * 模型输出里的外链图片一律阻断（只允许自站、data: 与自有头像协议）。
+   * `cottage-avatar:` 是角色卡图片的通道：主进程侧 handler 会把 URL 解析到
+   * `userData/avatars/` 之内并拒绝目录穿越（见 src/main/avatars.ts）。
+   * 放行的是协议而不是 `file:`，所以 renderer 仍然读不到任意本地文件。
+   */
+  imgSrc: `img-src 'self' data: ${AVATAR_SCHEME}:`,
   fontSrc: "font-src 'self' data:",
   objectSrc: "object-src 'none'",
   frameSrc: "frame-src 'none'",
