@@ -32,6 +32,12 @@ export const Icons = {
       <path d="M12 5v14M5 12h14" strokeWidth={2} />
     </Svg>
   ),
+  /** 向导里表示"当前已选中"的勾。 */
+  check: (p: IconProps = {}) => (
+    <Svg {...p}>
+      <path d="m5 12.5 4.5 4.5L19 7" strokeWidth={2.2} />
+    </Svg>
+  ),
   search: (p: IconProps = {}) => (
     <Svg {...p}>
       <circle cx="11" cy="11" r="7" />

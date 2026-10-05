@@ -32,6 +32,10 @@ import { ChatView } from './components/ChatView.js';
 import { DetailPanel } from './components/DetailPanel.js';
 import { CharactersPage, PersonasPage, SettingsPage } from './components/Pages.js';
 import { ConfirmDialog, MenuLayer, ToastLayer } from './components/Overlays.js';
+import {
+  NewConversationWizard,
+  type NewConversationChoice,
+} from './components/NewConversationWizard.js';
 
 /** 待确认的删除操作。 */
 interface PendingDelete {
@@ -235,35 +239,77 @@ export function App(): JSX.Element {
 
   /* ------------------------------ 会话操作 ------------------------------ */
 
+  /**
+   * 选中一个会话。
+   *
+   * 两件事必须一起做，少一个都是用户看得见的 bug：
+   *   1. **切回对话视图**——否则在角色库 / 人设 / 设置页点会话行「点了没反应」；
+   *   2. 已经选中的会话也必须切视图，所以不能因为 id 相同就整体早退
+   *      （以前那样写，在设置页点当前会话会彻底没有任何反应）。
+   */
   const selectConversation = useCallback(
     async (id: string) => {
+      setView('chat');
       if (useChatStore.getState().conversationId === id) return;
       useChatStore.getState().setActive(id);
       await loadMessages(id);
     },
-    [loadMessages],
+    [loadMessages, setView],
   );
 
-  const createConversation = useCallback(
-    async (character?: Character) => {
-      const target = character ?? activeCharacter ?? characters[0];
-      if (!target) {
-        toast('请先在角色库导入一张角色卡', 'error');
-        setView('characters');
-        return;
-      }
-      const result = await api().conversations.create({ characterId: target.id, useFirstMessage: true });
+  /* ------------------------------ 新建对话（向导） ------------------------------ */
+
+  const [wizard, setWizard] = useState<{
+    open: boolean;
+    characterId: string | null;
+    busy: boolean;
+    error: string | null;
+  }>({ open: false, characterId: null, busy: false, error: null });
+
+  /**
+   * 打开「新建对话」向导。
+   *
+   * 传 character 表示"角色已经定了"（从角色卡上的「新对话」进来），
+   * 向导会直接从「选人设」那一步开始，省掉一次无意义的确认。
+   */
+  const openNewConversation = useCallback((character?: Character) => {
+    setWizard({ open: true, characterId: character?.id ?? null, busy: false, error: null });
+  }, []);
+
+  const closeNewConversation = useCallback(() => {
+    setWizard({ open: false, characterId: null, busy: false, error: null });
+  }, []);
+
+  /**
+   * 向导确认后才真的建会话，并把用户选的**角色 / 人设 / Provider** 一起写进去。
+   *
+   * 旧实现是"点一下就用 activeCharacter ?? characters[0] 和全局默认 Provider 建"，
+   * 用户既看不见也改不了——这正是这次要换掉的东西。
+   */
+  const confirmNewConversation = useCallback(
+    async ({ characterId, personaId, providerId }: NewConversationChoice) => {
+      setWizard((w) => ({ ...w, busy: true, error: null }));
+      const provider = providers.find((p) => p.id === providerId);
+      const result = await api().conversations.create({
+        characterId,
+        personaId,
+        providerId,
+        ...(provider?.defaultModel ? { model: provider.defaultModel } : {}),
+        useFirstMessage: true,
+      });
       if (!result.ok) {
-        toast(result.error.message, 'error');
+        // 失败就留在向导里显示原因：把用户刚选的三项丢掉、让他重选一遍是最差的做法
+        setWizard((w) => ({ ...w, busy: false, error: result.error.message }));
         return;
       }
       useAppStore.getState().upsertConversation(result.data);
       await refreshConversations();
       useChatStore.getState().setActive(result.data.id);
       await loadMessages(result.data.id);
+      setWizard({ open: false, characterId: null, busy: false, error: null });
       setView('chat');
     },
-    [activeCharacter, characters, loadMessages, refreshConversations, setView],
+    [loadMessages, providers, refreshConversations, setView],
   );
 
   const renameConversation = useCallback(
@@ -448,7 +494,7 @@ export function App(): JSX.Element {
       }
       if (mod && key === 'n') {
         event.preventDefault();
-        void createConversation();
+        openNewConversation();
         return;
       }
       if (mod && key === 'b') {
@@ -486,7 +532,7 @@ export function App(): JSX.Element {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [createConversation, pendingDelete, stopGeneration]);
+  }, [openNewConversation, pendingDelete, stopGeneration]);
 
   /* ------------------------------ 设置持久化 ------------------------------ */
 
@@ -507,7 +553,7 @@ export function App(): JSX.Element {
 
   const sidebar = (
     <Sidebar
-      onNewChat={() => void createConversation()}
+      onNewChat={() => openNewConversation()}
       onSelectConversation={(id) => void selectConversation(id)}
       onRenameConversation={renameConversation}
       onTogglePin={(id, pinned) => void togglePin(id, pinned)}
@@ -555,7 +601,7 @@ export function App(): JSX.Element {
             onStop={() => void stopGeneration()}
             onOpenSettings={() => setView('settings')}
             onRestoreSummary={(id) => void restoreSummary(id)}
-            onNewConversation={() => void createConversation()}
+            onNewConversation={() => openNewConversation()}
             onEditMessage={(messageId, content, truncate) => {
               void (async () => {
                 const result = await api().messages.edit({ messageId, content, truncate });
@@ -649,7 +695,7 @@ export function App(): JSX.Element {
                 if (!result.ok) toast(result.error.message, 'error');
               })();
             }}
-            onNewConversation={(character) => void createConversation(character)}
+            onNewConversation={(character) => openNewConversation(character)}
             onSave={(character, patch) => {
               void (async () => {
                 const result = await api().characters.update(character.id, {
@@ -852,6 +898,31 @@ export function App(): JSX.Element {
 
       <MenuLayer />
       <ToastLayer />
+      {wizard.open ? (
+        <NewConversationWizard
+          characters={characters}
+          personas={personas}
+          providers={providers}
+          initialCharacterId={wizard.characterId}
+          defaultProviderId={settings?.chatProviderId ?? null}
+          busy={wizard.busy}
+          error={wizard.error}
+          onConfirm={(choice) => void confirmNewConversation(choice)}
+          onCancel={closeNewConversation}
+          onGoCharacters={() => {
+            closeNewConversation();
+            setView('characters');
+          }}
+          onGoPersonas={() => {
+            closeNewConversation();
+            setView('personas');
+          }}
+          onGoSettings={() => {
+            closeNewConversation();
+            setView('settings');
+          }}
+        />
+      ) : null}
       {pendingDelete ? (
         <ConfirmDialog
           title={pendingDelete.kind === 'conversation' && pendingDelete.id === '__plain_config__'

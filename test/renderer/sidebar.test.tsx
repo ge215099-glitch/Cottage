@@ -394,11 +394,30 @@ describe('侧栏两态与导航（验收项 19 / 24 / 25）', () => {
     expect(useAppStore.getState().sidebarCollapsed).toBe(true);
   });
 
-  it('四个固定导航项，当前项标记 aria-current=page', () => {
+  it('固定导航只有三项「去别处」的入口，刻意没有「对话」', () => {
+    // 回归锚点：这里以前是四项（含「对话」）。它与正下方的会话列表重复——
+    // 同一个动作两个入口，用户点会话行还会疑惑"为什么点了不跳转"，
+    // 所以「对话」被移除，回到对话靠点会话行或新建一个。
     setup();
     const nav = screen.getByRole('navigation', { name: '主导航' });
-    expect(within(nav).getAllByRole('button')).toHaveLength(4);
-    expect(within(nav).getByRole('button', { current: 'page' }).textContent).toBe('对话');
+    expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      '角色库',
+      '人设',
+      '设置',
+    ]);
+    expect(within(nav).queryByRole('button', { name: '对话' })).toBeNull();
+  });
+
+  it('停在角色库页时，导航高亮角色库（aria-current=page）', () => {
+    setup({ view: 'characters' });
+    const nav = screen.getByRole('navigation', { name: '主导航' });
+    expect(within(nav).getByRole('button', { current: 'page' }).textContent).toBe('角色库');
+  });
+
+  it('对话视图不在导航里，所以导航上没有任何 aria-current', () => {
+    setup({ view: 'chat' });
+    const nav = screen.getByRole('navigation', { name: '主导航' });
+    expect(within(nav).queryByRole('button', { current: 'page' })).toBeNull();
   });
 
   it('点击导航切换视图', async () => {

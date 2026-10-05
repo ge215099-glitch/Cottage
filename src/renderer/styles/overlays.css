@@ -126,6 +126,139 @@
   color: var(--danger);
 }
 
+/* ---- 新建对话向导（3 步） ---- */
+
+.dialog.wizard {
+  width: 460px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 80px);
+}
+
+/*
+ * 打开时把焦点移进对话框是为了可访问性（读屏要落在对话框内），
+ * 但那会命中 base.css 的全局 `:focus-visible` 焦点环，鼠标用户也看到一圈蓝框，
+ * 违反 UI 文档 5.3「焦点环只在键盘导航出现，鼠标点击不显示」。
+ *
+ * 这个容器 tabindex=-1、永远不进 Tab 序列，所以它根本不需要焦点环；
+ * 真正的控件（取消 / 上一步 / 下一步 / 无线电项）仍由全局规则给环。
+ */
+.dialog.wizard:focus,
+.dialog.wizard:focus-visible {
+  outline: none;
+}
+
+.wizard-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.wizard-head h3 {
+  margin: 0;
+}
+
+.wizard-progress {
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+}
+
+.wizard-body {
+  margin-top: var(--space-4);
+  overflow-y: auto;
+  /* 三步之间高度不同，给一个下限，避免对话框跳来跳去 */
+  min-height: 220px;
+}
+
+.choice-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.choice-label {
+  margin: 0 0 var(--space-2) !important;
+  font-size: var(--font-size-list) !important;
+  color: var(--text-secondary) !important;
+}
+
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fade) var(--motion-ease);
+}
+
+.choice:hover,
+.choice:focus-visible {
+  background: var(--surface-hover);
+}
+
+.choice.active {
+  background: var(--surface-active);
+  border-color: var(--border-subtle);
+}
+
+.choice-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  flex: none;
+  color: var(--accent-soft);
+}
+
+.choice-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.choice-title {
+  font-size: var(--font-size-list);
+  line-height: var(--line-height-list);
+}
+
+.choice-meta {
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
+
+.wizard-empty p {
+  margin: 0;
+}
+
+/* 向导底部左侧是「取消」，其余靠右 */
+.dialog .actions .spacer {
+  flex: 1;
+}
+
 /* 明文导出的一次性强提示 */
 .dialog.warn-dialog {
   border-color: var(--warn);

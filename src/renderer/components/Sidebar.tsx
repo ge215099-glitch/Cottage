@@ -19,9 +19,15 @@ import { Icons } from './Icons.js';
 import { VirtualRowList, shouldVirtualize } from './VirtualRowList.js';
 import type { Conversation } from '@shared/types.js';
 
-/** 四个固定导航项（不设二级分组标题）。 */
+/**
+ * 固定导航项（不设二级分组标题）。
+ *
+ * **为什么没有「对话」**：正下方就是会话列表，它本身就是回到对话的入口——
+ * 再放一个「对话」导航等于同一个动作有两个入口，用户点列表时还会疑惑
+ * "为什么点了没跳转"。所以导航只留三个"去别处"的入口（角色库 / 人设 / 设置），
+ * 回到对话靠点会话行或新建一个。
+ */
 const NAV_ITEMS: Array<{ key: ViewKey; label: string; icon: () => JSX.Element }> = [
-  { key: 'chat', label: '对话', icon: Icons.chat },
   { key: 'characters', label: '角色库', icon: Icons.characters },
   { key: 'personas', label: '人设', icon: Icons.personas },
   { key: 'settings', label: '设置', icon: Icons.settings },
