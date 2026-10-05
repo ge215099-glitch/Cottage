@@ -541,8 +541,49 @@ UI 文档对菜单提了明确时序（180ms 宽限期、锚点切换不闪断�
 | 原生模块 | 安装后 `electron-builder install-app-deps`；`asarUnpack` 含 `**/*.node` | 见 5.4 |
 | 版本锁定 | `electron` 精确版本；提交 `pnpm-lock.yaml` | 防"本地能跑、装的包跑不起来" |
 | 平台优先级 | Windows 为主开发与验收平台；macOS / Linux 保证可构建可启动 | 与团队主要使用场景一致；Linux 需额外验证 `safeStorage` 降级路径 |
+| 开发启动方式 | `pnpm dev`（终端模式）与 `pnpm launch` / 桌面快捷方式（无窗口模式）**两条并列** | 见下方 10.1：黑框是终端而不是应用，去掉窗口但保留日志 |
 | 签名与公证 | MVP 外，但目录结构预留（`build/` 下放图标与配置） | 不阻塞 MVP；一旦要分发就得补 |
 | 自动更新 | MVP 不做 | 与"本地优先、不上传"的立场一致，也少一个网络入口 |
+
+### 10.1 开发模式的"黑框"与桌面快捷方式
+
+`pnpm dev` 跑起来时应用窗口后面那个控制台窗口，**不是应用的一部分**，它是
+`electron-vite dev` 占着的终端。那个终端里的东西是有用的：
+
+- Vite dev server（renderer 的 HMR 靠它）；
+- 源码监听与 main / preload 重建；
+- 主进程 `safeLog` 的输出，包括「启动完成」这条就绪标志（`smoke` 与启动器都以它为判据）。
+
+所以"去掉黑框"要拆成两件事做：**窗口不要，输出要留**。做法是：
+
+```
+桌面快捷方式 (.lnk)
+   └─ wscript.exe scripts/launch-dev.vbs      ← GUI 子系统程序，起进程不闪窗口
+        └─ node scripts/launch-dev.mjs        ← 真正干活的启动器（逻辑全在这里，可测）
+             └─ electron-vite dev             ← stdio 直接接 logs/dev.log 的文件描述符
+                  └─ electron.exe .
+```
+
+三条纪律：
+
+1. **不用管道接输出**，而是把子进程的 stdout / stderr 直接接在日志文件的 fd 上。
+   管道会带来两个额外风险：父进程死掉日志就断；受限环境里 `spawn` 带 `pipe` 直接
+   `EPERM`。fd 没有这两个问题，`electron-vite` 内部 `stdio: 'inherit'` 起 Electron
+   也会自然落到同一个文件里。
+2. **判据只看应用自己的输出**。启动器会把"等待「启动完成」…"这类说明写进同一个日志，
+   而就绪判据正是 /启动完成/——不把自家那几行剔掉，启动器就会用自己的说明证明自己成功。
+   实现上分两步：会话头切分（上一次成功启动的日志不能算这一次）+ `appOutput()` 前缀过滤。
+   这条不是纸面推理：第一版就这么写坏了，失败路径被判决成"启动成功、退出码 0"，
+   被 `pnpm smoke:launcher` 当场抓住。
+3. **失败必须可见**。黑框没有了之后，"起不来"如果只体现为"什么都没发生"就不可诊断，
+   所以启动器失败时退出非 0 并写下 `logs/dev-failure.txt`（原因 + 日志尾部），
+   `.vbs` 用记事本把它摊开。重复双击同理：已有实例在跑时退出 0（不是错误），
+   否则用户双击两次会收到一个假错误。
+
+对应的验证是 `pnpm smoke:launcher`：它沿用 `smoke:dev` 的"哑进程替换 Electron"套路，
+验启动器这条链路（隐藏启动、日志落盘、就绪判定、锁、退出码、失败说明），
+真 Electron 能否起来仍由 `pnpm smoke` 负责。启动器的单元测试在
+`test/launch-dev.test.mjs` 与 `test/create-desktop-shortcut.test.mjs`。
 
 ---
 

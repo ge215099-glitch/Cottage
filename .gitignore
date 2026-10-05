@@ -30,6 +30,8 @@ pnpm-debug.log*
 *.temp
 tmp/
 temp/
+# 开发启动器的运行时产物：日志 / 锁 / 失败说明（见 scripts/launch-dev.mjs）
+logs/
 
 # ---- 密钥与环境变量（切勿提交） ----
 .env

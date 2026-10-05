@@ -33,10 +33,28 @@
 
 ```bash
 pnpm install        # 安装依赖；postinstall 会按 Electron ABI 重建 better-sqlite3
-pnpm dev            # 开发模式（renderer 有 HMR）
+pnpm dev            # 开发模式（renderer 有 HMR）；终端里能看到全部日志
 pnpm build          # 三段构建：main / preload / renderer
 pnpm start          # 预览构建产物
 ```
+
+### 不想每次敲 `pnpm dev`：桌面快捷方式
+
+```bash
+pnpm shortcut       # 在桌面创建一个 Cottage 快捷方式（双击即启动）
+pnpm launch         # 与 pnpm dev 等价，只是把输出写进 logs/dev.log
+```
+
+双击快捷方式启动时**不会出现控制台窗口**——那个黑框是 `pnpm dev` 的终端，不是应用的窗口：
+
+- 它承担的是「Vite dev server（renderer 的 HMR 靠它）+ 源码监听重建 + 主进程日志」；
+- 这些事**依然要做**，只是输出被写进 `logs/dev.log`（超过 2 MB 轮转到 `logs/dev.log.1`）；
+- 起不来的时候，启动器退出码非 0，并写下 `logs/dev-failure.txt`（原因 + 日志尾部），
+  快捷方式会把它用记事本摊开——黑框可以没有，"为什么没起来"不能没有。
+
+想看实时日志就 `Get-Content -Wait logs/dev.log`，或者继续用 `pnpm dev`（终端模式一直保留）。
+启动器自身的验证见下文 `pnpm smoke:launcher`；它由 `scripts/launch-dev.mjs`（逻辑）、
+`scripts/launch-dev.vbs`（零窗口垫片）、`scripts/create-desktop-shortcut.mjs`（建 .lnk）三部分组成。
 
 `pnpm install` 之后如果提示原生模块未就绪，执行：
 
@@ -59,6 +77,7 @@ pnpm verify         # 三份校验：设计文档 / 技术方案 / 编码与依�
 pnpm test           # 单元 + 组件测试（vitest），再加校验器自身的测试（node --test）
 pnpm smoke:dev      # 开发模式：dev server 起来并正确提供 renderer 入口（含 HMR 客户端）
 pnpm smoke          # 生产模式：真的把 Electron 拉起来，确认能开库、迁移、注册 IPC、建窗口
+pnpm smoke:launcher # 快捷方式那条链路：隐藏启动、日志落盘、就绪判定、锁、失败说明
 pnpm verify:all     # 上面全部串起来跑一遍
 ```
 
@@ -71,15 +90,17 @@ pnpm verify:all     # 上面全部串起来跑一遍
 | 真卡（live，默认跳过） | 纯 Node | `COTTAGE_REAL_CARD=<路径>` 才跑：真 PNG 卡的解析、「导入 → 导出 PNG → 再导入」闭环、导出的卡面图与源文件逐字节一致 |
 | 冒烟（开发） | node + Vite | `pnpm dev` 三段构建、dev server 端口、renderer 入口与 HMR 客户端 |
 | 冒烟（生产） | Electron | 主进程启动链路（开库 → 迁移 → 清扫 → 注册 IPC → 建窗口） |
+| 冒烟（启动器） | node + 哑 Electron | 快捷方式那条链路：隐藏启动、输出落进 `logs/dev.log`、就绪判定、重复双击被挡、退出后锁与 dev server 都收干净、失败时留下 `logs/dev-failure.txt` 并退出非 0 |
 
 **必须诚实标注的边界**：jsdom 没有排版引擎，「悬停前后 `getBoundingClientRect()`
 不变」「菜单在视口边缘自动翻转」「侧栏真实宽度只有 260 / 56 两态」这类断言
 **只能在 E2E 里做**。把它们写在组件测试里只会得到永远为真的假通过，
 所以它们既没写、也不假装覆盖。
 
-两个冒烟脚本各管一半，谁都不假装覆盖另一半：`smoke:dev` 用哑进程替换 Electron，
+三个冒烟脚本各管一段，谁都不假装覆盖别的：`smoke:dev` 用哑进程替换 Electron，
 只验证 Vite dev server 这条链路；`smoke` 真的拉起 Electron，验证主进程启动链，
-但它不验证界面渲染。
+但它不验证界面渲染；`smoke:launcher` 换掉 Electron 来验**启动器**这条链路
+（同样的哑进程套路），它不验证真实 Electron 能否起来，也不验证界面。
 
 `smoke` 的就绪判据是主进程在**建窗口之后**打印的「启动完成」，而不是更早的
 「数据库已打开」——后者发生在迁移之前，拿它当判据会让"迁移之后就抛错"的启动失败
@@ -92,6 +113,8 @@ pnpm verify:all     # 上面全部串起来跑一遍
 > `COTTAGE_SMOKE_SANDBOXED=1 pnpm smoke`。
 > 若环境受限导致无法校验，`smoke` 会明确打印"**未能完成校验**"并说明原因，绝不打印
 > "通过"；CI 上要求严格可设 `COTTAGE_SMOKE_STRICT=1`，此时环境受限按失败处理。
+> `smoke:launcher` 同理：环境若不允许创建子进程（`spawn EPERM`，esbuild / Vite
+> 起不来），它报告的是"未能完成校验"，而不是把环境问题算成启动器的缺陷。
 
 > **`pnpm dev` 与 `pnpm build` 是两条独立路径**，构建通过不代表开发能起来。
 > 实测踩过一次：产物名与 `package.json` 的 `main` 不一致时，`pnpm build` 全绿，
@@ -133,6 +156,10 @@ src/
     stores/             5 个 Zustand 切片 + 菜单 + toast
     styles/tokens.css   设计 token 单一来源（深浅两套）
 scripts/                校验脚本 + 原生模块重建 + Electron 冒烟
+  launch-dev.mjs        开发启动器（隐藏黑框，日志落进 logs/dev.log）
+  launch-dev.vbs        零窗口垫片：wscript 起启动器，失败时把说明摊开
+  create-desktop-shortcut.mjs  生成桌面快捷方式（pnpm shortcut）
+  smoke-launcher.mjs    启动器冒烟（哑 Electron 替换真 Electron）
 test/                   单元与组件测试
 docs/                   产品 / UI / 技术方案
 ```
