@@ -36,9 +36,24 @@ let ctx: AppContext | null = null;
 /**
  * SQLite 单写者假设：两个实例同时写库会互相锁死。
  * 第二个实例立刻退出，并把已存在的窗口拉到前台。
+ *
+ * 注意"没拿到锁"有两种完全不同的原因，而 Electron 不区分：
+ *   1. 确实已有实例在跑 —— 正常路径，本进程安静退出即可；
+ *   2. 锁文件/命名对象创建失败（受限的环境、被占用的 userData 等）—— 异常路径。
+ *
+ * 以前这里只写 `app.quit()`，于是第 2 种情况的表象是"进程瞬间退出、退出码 0、
+ * 不建库、不打一行字"，排查时几乎无从下手（实测就踩过：Chromium 报
+ * `process_singleton_win.cc ... Lock file can not be created! Error code: 5`，
+ * 但那条日志只在 stderr 且很容易被忽略）。所以这里把决定和原因显式写出来，
+ * 代价是一行输出，收益是整个失败模式可诊断。
  */
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  log.warn(
+    '启动中止',
+    '未取得单实例锁：可能已有实例在运行；也可能是锁文件无法创建（受限环境 / userData 不可写）。',
+  );
+  for (const line of recentLogLines()) console.error(line);
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -78,16 +93,27 @@ async function bootstrap(): Promise<void> {
   installGlobalErrorHandlers();
 
   // ---- 6. 建窗口 ----
-  mainWindow = createMainWindow();
+  const window = createMainWindow();
+  mainWindow = window;
   ctx.emit = (channel, payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
   };
 
-  mainWindow.on('closed', () => {
+  window.on('closed', () => {
     mainWindow = null;
     // 窗口关了就中断所有在飞的流，避免后台继续写入
     if (ctx) abortAll(ctx);
   });
+
+  /*
+   * 这一行是**契约**，不只是日志：scripts/smoke-electron.mjs 以它作为"启动成功"的判据。
+   * 因此必须留在整条启动链的最后一步之后。
+   *
+   * 为什么非要有它：在这行存在之前，冒烟测试只能拿"数据库已打开"当真，而那是**迁移之前**
+   * 打的日志。于是"开完库、迁移、然后 IPC 注册抛错"这种失败会被判为通过——实测踩过一次
+   * （`export:character-card` 通道缺 handler），应用实际起不来却显示绿。
+   */
+  log.info('启动完成', { windowId: window.id });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
