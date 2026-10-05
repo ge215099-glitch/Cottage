@@ -3,7 +3,7 @@
 > 版本：v1.0（MVP）
 > 上游基线：`docs/product-design.md` v1.0（尤其第 6 节"技术约束"）、`docs/ui-design-sidebar-chat.md` v1.0、`docs/ui-design-conversation.md` v1.0
 > 本文回答一个问题：**这套东西用什么写、怎么分层、哪一层负责什么、用什么证明它没写坏。**
-> 一句话结论：**Electron + TypeScript 单语言全栈；业务逻辑集中到零 Electron 依赖的 `src/core`；DB 与网络只在主进程；界面用 React 从零实现，`demo/index.html` 只作布局与交互参考、不参与构建。**
+> 一句话结论：**Electron + TypeScript 单语言全栈；业务逻辑集中到零 Electron 依赖的 `src/core`；DB 与网络只在主进程；界面用 React 从零实现。**
 
 ---
 
@@ -19,7 +19,7 @@
 | D4 | 数据层用 `better-sqlite3` + 自管顺序迁移 | 同步 API 让多步写入天然成事务；迁移可控 | 冻结 |
 | D5 | api_key 只以 safeStorage 密文落库（字段 `api_key_enc`），明文不出主进程 | 产品文档 3.1 | 冻结 |
 | D6 | 界面用 React 从零实现 | 用户已确认；见第 9 节 | 冻结 |
-| D7 | `demo/index.html` 只作布局与交互参考，不参与构建 | 用户已确认；见 9.2 | 冻结 |
+| D7 | 不在仓库里保留与实现分叉的交互参考件：早期 `demo/` 已删除 | 用户要求；见 9.2 | 冻结 |
 | D8 | Provider 适配层手写，不使用官方 SDK | 见 7.1 | 冻结 |
 | D9 | 文档校验脚本与自动化测试同仓、同一次提交 | 仓库 `AGENTS.md` | 冻结 |
 
@@ -464,21 +464,20 @@ interface ProviderAdapter {
 
 **明确不引入**：Ant Design / MUI / Chakra 等成品组件库——它们自带一套颜色与间距体系，会与设计 token 形成双轨（见 14 节）。
 
-### 9.2 与 `demo/` 的边界
+### 9.2 早期交互样本已移除
 
-`demo/index.html` 是**已验证过的交互样本**，它的价值是"照着点一遍就知道对不对"，不是"改改就能用"。
+`demo/index.html`（单文件、纯前端、模拟数据的交互样本）**已按需求方要求删除**，
+连同它的校验脚本 `scripts/verify-demo.mjs`。它在项目早期的价值是"照着点一遍就知道
+对不对"，而这份价值已经被真正的实现与测试取代：
 
-| demo 提供什么 | 实现侧怎么用 |
+| 当年靠 demo 对照的东西 | 现在的落点 |
 |---|---|
-| 布局比例（260 / flex / 320）、间距与圆角的具体数值 | 作为 Tailwind token 的取值来源 |
-| 悬停、菜单时序、压缩状态机、占用条阈值的可视化效果 | 作为人工对照：实现完一个组件就照 demo 点一遍 |
-| 那份 `verify-demo.mjs` 里的关键交互断言清单 | 作为组件测试用例来源（把正则断言升级为行为断言） |
+| 布局比例（260 / flex / 320）、间距与圆角的具体数值 | `src/renderer/styles/tokens.css` 是唯一来源 |
+| 悬停、菜单时序、压缩状态机、占用条阈值的可视化效果 | 组件测试 + 用 CDP 驱动真实窗口截图核对（排版类断言只在 E2E 里做） |
+| 关键交互断言清单 | `test/renderer/*` 里的行为断言 |
 
-| 明确不做 | 原因 |
-|---|---|
-| 不 import / 复制 demo 的脚本或样式 | demo 是命令式 DOM 操作，与 React 状态模型不同构，搬过来会变成两套真相 |
-| 不把 demo 编进产物 | 构建配置不引用 `demo/`（验收项 15/16） |
-| 不为了"和 demo 一样"而在 React 里模拟 DOM diff | 行为一致即可，实现方式无关 |
+删掉而不是留着，是因为**参考件与实现已经分叉**（它还是 4 项导航、没有新对话向导、
+角色库还是文字列表），留着只会让后来的人以为它是规格。
 
 ### 9.3 状态归属
 
@@ -656,10 +655,9 @@ src/
     components/            通用组件（菜单 / 对话框 / 虚拟列表）
     stores/                5 个 Zustand 切片
     styles/tokens.css      设计 token 单一来源
-scripts/                   verify-design-doc.mjs · verify-demo.mjs · verify-tech-stack.mjs
+scripts/                   verify-design-doc.mjs · verify-tech-stack.mjs · verify-boundaries.mjs
 test/                      单元与组件测试
 docs/                      产品 / UI / 技术方案
-demo/index.html            交互参考样本，不参与构建
 ```
 
 ---
@@ -693,7 +691,7 @@ demo/index.html            交互参考样本，不参与构建
 - 不引入富文本编辑器或代码编辑器（Monaco）：角色卡编辑用纯文本域即可。
 - 不做消息级代码高亮与数学公式渲染：二期。
 - 不做多窗口 / 分屏 / 后台常驻任务：MVP 单窗口单实例。
-- 不把 `demo/` 的任何代码编进产物：它只是参考。
+- 不在仓库里留交互参考件（早期 `demo/` 已删除，见 9.2）：参考件会与实现分叉，最后变成第二份规格。
 
 ---
 
@@ -713,7 +711,5 @@ demo/index.html            交互参考样本，不参与构建
 12. 429 场景下最多自动重试 2 次且间隔递增；已产出内容的请求不再重试。
 13. 打包产物中 `better-sqlite3` 原生模块位于 `asarUnpack` 范围，安装后首次启动能正常建库。
 14. `electron` 在 `package.json` 中为精确版本号（不含 `^` / `~`），锁文件已提交。
-15. 构建配置不引用 `demo/`；产物中不含 `demo/index.html`。
-16. `renderer` 源码中不出现对 `demo/` 的任何引用（import、路径字符串、资源拷贝）；界面为 React 从零实现，`demo/` 只被人工对照使用。
-17. 三层测试齐备并可运行：`core`/DAO 单元测试、组件测试、Playwright Electron 端到端测试。
-18. 导出 PNG 卡：写出的文件块 CRC 全部正确、**卡面图像素与源文件逐字节一致**、文本块只剩一个（旧的 `chara`/`ccv3` 已被替换），且能被重新导入；角色没有卡面图时明确报错，不产出占位图。
+15. 三层测试齐备并可运行：`core`/DAO 单元测试、组件测试、Playwright Electron 端到端测试。
+16. 导出 PNG 卡：写出的文件块 CRC 全部正确、**卡面图像素与源文件逐字节一致**、文本块只剩一个（旧的 `chara`/`ccv3` 已被替换），且能被重新导入；角色没有卡面图时明确报错，不产出占位图。

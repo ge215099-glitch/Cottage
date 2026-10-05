@@ -216,7 +216,10 @@ test('关键选型必须逐个点到名', () => {
   assert.ok(REQUIRED_LINKS.every((l) => realText.includes(l)), '必须回链全部上游基线');
 });
 
-test('demo 的定位必须写清楚：只作参考、不参与构建', () => {
-  assert.match(realText, /demo\/index\.html` 只作布局与交互参考、不参与构建|只作布局与交互参考/);
-  assert.match(realText, /不把 `demo\/` 的任何代码编进产物|构建配置不引用 `demo\/`/);
+test('PNG 卡的两侧（解析与写回）必须写清位置与纪律', () => {
+  assert.match(realText, /png-card\.ts/);
+  assert.match(realText, /embedPngCardPayload/);
+  // 写侧的 CRC 与 base64 纪律、以及"不造占位图"这条产品边界
+  assert.match(realText, /CRC 必须算对|CRC 必须算对/);
+  assert.match(realText, /不生成占位图冒充卡面|不生成灰色占位图/);
 });

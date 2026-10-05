@@ -192,22 +192,6 @@ test('main 允许依赖 electron / node: / core / shared（不误报）', () => 
   assert.deepEqual(checkImports(ok, 'src/main/a.ts'), []);
 });
 
-test('src 下引用 demo/ 会被检出（验收项 16）', () => {
-  const rel = checkImports("import { x } from '../../demo/foo.js';", 'src/renderer/a.ts');
-  assert.equal(rel.length, 1);
-  assert.match(rel[0], /不得引用 demo\//);
-
-  const literal = checkImports("const demoPath = 'demo/index.html';", 'src/main/a.ts');
-  assert.equal(literal.length, 1);
-  assert.match(literal[0], /路径字符串/);
-});
-
-test('main / preload 里提到 demo 只是注释时不误报（只在 import 与路径串上判）', () => {
-  // 校验器只看 import 与引号包起来的路径，不拦普通注释
-  const ok = '// 这里的实现方式参考了 demo/index.html 的交互，但没有引用它的代码\nconst a = 1;\n';
-  assert.deepEqual(checkImports(ok, 'src/renderer/a.ts'), []);
-});
-
 /* ---------------- 端到端 ---------------- */
 
 test('整体校验能同时报出编码与边界两类问题', () => {

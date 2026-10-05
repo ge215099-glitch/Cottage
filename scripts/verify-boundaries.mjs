@@ -50,7 +50,7 @@ export const SCANNED_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.mjs', '.js',
 export const SCANNED_ROOT_FILES = ['.gitignore', '.gitattributes', '.editorconfig', '.npmrc'];
 
 /** 递归扫描时跳过的目录名。 */
-const SKIP_DIRS = new Set(['node_modules', 'out', 'dist', 'build', 'coverage', '.git', 'demo']);
+const SKIP_DIRS = new Set(['node_modules', 'out', 'dist', 'build', 'coverage', '.git']);
 
 /** 替换字符：任何一种编码转换出错都会留下它。 */
 export const REPLACEMENT_CHAR = '\uFFFD';
@@ -95,19 +95,7 @@ export const SHARED_FORBIDDEN_IMPORTS = [
 ];
 
 /**
- * `src/` 全目录禁止引用 `demo/`（技术方案验收项 15/16）。
- *
- * demo 是"命令式 DOM 操作"的交互参考，与 React 状态模型不同构。
- * 一旦有人图省事 import 或复制它的脚本，就会出现两套真相：
- * 界面看起来对，但状态来源说不清。这条在 CI 阶段直接拦住。
- */
-export const DEMO_REFERENCE_PATTERNS = [
-  { re: /\.\.?\/+demo\//, why: 'src 下不得引用 demo/（它只作人工对照，不参与构建）' },
-  { re: /['"]demo\//, why: 'src 下不得引用 demo/ 的路径字符串' },
-];
-
-/**
- * 递归收集文件（跳过 node_modules / out / .git / demo）。
+ * 递归收集文件（跳过 node_modules / out / .git）。
  *
  * 特殊处理 `'.'`：只取仓库根**当前层级**的文件，不递归——否则会顺着根目录
  * 一路走进 `src`、`test`（重复扫描）以及 `.git` 内部（体积巨大且无意义）。
@@ -186,13 +174,6 @@ export function checkImports(text, rel) {
         : [];
   for (const { re, why } of rules) {
     if (re.test(text)) issues.push(`${rel}：${why}（匹配 ${re}）`);
-  }
-
-  // demo 引用检查对 src 下所有文件生效
-  if (rel.startsWith('src/')) {
-    for (const { re, why } of DEMO_REFERENCE_PATTERNS) {
-      if (re.test(text)) issues.push(`${rel}：${why}（匹配 ${re}）`);
-    }
   }
   return issues;
 }

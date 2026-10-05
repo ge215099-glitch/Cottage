@@ -100,7 +100,6 @@ export default defineConfig({
     },
     build: {
       outDir: 'out/renderer',
-      // 构建配置**不引用 demo/**（技术方案验收项 15）
       rollupOptions: { input: { index: resolve('src/renderer/index.html') } },
     },
   },

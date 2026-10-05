@@ -485,7 +485,7 @@ function SummaryDivider({
   );
 }
 
-/** 深浅色开关（Demo 有、设计文档未列为必做，作为便利项保留）。 */
+/** 深浅色开关（设计文档未列为必做，作为便利项保留）。 */
 function ThemeButton(): JSX.Element {
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
