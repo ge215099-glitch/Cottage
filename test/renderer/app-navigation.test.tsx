@@ -166,4 +166,24 @@ describe('角色卡导出：先选格式再导出', () => {
     expect((pngItem as HTMLButtonElement).disabled).toBe(true);
     expect(pngItem.textContent).toContain('没有卡面图');
   });
+
+  it('菜单开着时 Esc 只收菜单：弹窗留着，再按一次才关弹窗', async () => {
+    /*
+     * 这条覆盖的是「应用外壳的全局 Esc 处理先跑」那条顺序。
+     *
+     * 组件测试里只挂 CharactersPage 时，菜单状态是手动塞进 store 的，
+     * 走的是另一个分支；真实使用中按键先经过 #root 上的 React 监听
+     * （菜单层自己会 close + preventDefault），弹窗必须能识别出"这一下已被消费"。
+     * 用非 cancelable 的事件测不出问题——真实按键是 cancelable 的。
+     */
+    const { user } = await openDetail();
+    await screen.findByRole('menu', { name: '导出角色卡' });
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('dialog', { name: '角色详情：爱丽丝' })).toBeTruthy();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });

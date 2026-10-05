@@ -17,9 +17,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { extractPngCardPayload } from '../src/core/png-card.js';
-import { parseCharacterCard } from '../src/core/character-card.js';
+import { findLostFields, parseCharacterCard } from '../src/core/character-card.js';
 import { importCharacterFromFile } from '../src/main/services/character-import.js';
+import { exportCharacterPng } from '../src/main/services/export.js';
+import { createAppContext } from '../src/main/context.js';
 import { openMigratedDb } from './helpers/db.js';
+import { listChunks, rawChunkOf } from './helpers/png.js';
 
 const realCardPath = process.env['COTTAGE_REAL_CARD'] ?? '';
 const describeReal = realCardPath && existsSync(realCardPath) ? describe : describe.skip;
@@ -108,6 +111,53 @@ describeReal('用真卡走一遍导入链路', () => {
       expect(result.savedAvatar).toBe(false);
       expect(result.character.avatarPath).toBeNull();
       expect(result.character.name.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(userData, { recursive: true, force: true });
+      db.close();
+    }
+  });
+});
+
+describeReal('用真卡走一遍「导入 → 导出 PNG → 再导入」', () => {
+  it('导出的 PNG 卡能被重新导入，数据与库里一致，卡面图像素没变', async () => {
+    const db = openMigratedDb();
+    const userData = mkdtempSync(path.join(tmpdir(), 'cottage-real-export-'));
+    try {
+      const imported = await importCharacterFromFile(db, userData, realCardPath, 1_700_000_000_000);
+      const ctx = createAppContext(db, path.join(userData, 'cottage.db'), userData);
+
+      // 改一个字段，导出后必须带的是新值
+      const { bytes, card } = await exportCharacterPng(ctx, imported.character.id);
+      const exported = JSON.parse(extractPngCardPayload(bytes).json) as Record<string, unknown>;
+      expect(exported['spec']).toBe(card['spec']);
+
+      // 真卡里原本有两个 chara 块，导出后只该剩一个（都是新写的那份）
+      const chunks = listChunks(bytes);
+      expect(chunks.filter((c) => c.keyword === 'chara')).toHaveLength(1);
+      expect(chunks.every((c) => c.crcOk)).toBe(true);
+
+      // 图片本体逐字节未变
+      for (const type of ['IHDR', 'IDAT', 'IEND']) {
+        expect(Array.from(rawChunkOf(bytes, type)!)).toEqual(
+          Array.from(rawChunkOf(new Uint8Array(readFileSync(realCardPath)), type)!),
+        );
+      }
+
+      // 再导入：第三方字段一个不丢
+      const exportedPath = path.join(userData, 'exported.png');
+      writeFileSync(exportedPath, bytes);
+      const reimported = await importCharacterFromFile(db, userData, exportedPath, 1_700_000_000_001);
+      expect(reimported.character.name).toBe(imported.character.name);
+      expect(reimported.savedAvatar).toBe(true);
+
+      const original = parseCharacterCard(extractPngCardPayload(new Uint8Array(readFileSync(realCardPath))).json);
+      expect(findLostFields(original.rawJson, exported)).toEqual([]);
+
+      console.log(
+        `  导出：${bytes.length} 字节（源 ${readFileSync(realCardPath).length}）` +
+          ` keyword=${extractPngCardPayload(bytes).keyword}` +
+          ` 保留字段=${JSON.stringify(parseCharacterCard(exported).preservedFields)}`,
+      );
     } finally {
       rmSync(userData, { recursive: true, force: true });
       db.close();

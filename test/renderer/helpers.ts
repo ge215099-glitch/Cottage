@@ -241,7 +241,7 @@ export function installFakeApi(options: FakeApiOptions = {}): {
       update: method('characters.update', async () => ok(makeCharacter())),
       delete: method('characters.delete', async () => ok({ ok: true })),
       // 默认"用户在保存对话框里点了取消"：path 为 null 但内容已生成
-      export: method('characters.export', async (id: unknown, format: unknown) =>
+      export: method('characters.export', async (_id: unknown, format: unknown) =>
         ok({
           format: format === 'png' ? 'png' : 'json',
           path: null,
