@@ -14,6 +14,7 @@ import type { JSX } from 'react';
 import type {
   AppDiagnostics,
   Character,
+  CharacterExportFormat,
   CompressResult,
   NormalizedError,
   ProviderTestResult,
@@ -327,6 +328,49 @@ export function App(): JSX.Element {
     else toast(result.error.message, 'error');
   }, []);
 
+  /**
+   * 导出角色卡：**先选格式，再过系统保存对话框**。
+   *
+   * 格式由应用自己选（而不是在保存对话框的"保存类型"下拉里选）：那个下拉在不同
+   * 平台的表现不一致，而且 PNG 卡要求角色有卡面图——没有的话菜单项直接置灰，
+   * 比"挑完路径才被告知导不出来"清楚得多。
+   */
+  const runCharacterExport = useCallback(
+    async (character: Character, format: CharacterExportFormat) => {
+      const result = await api().characters.export(character.id, format);
+      if (!result.ok) {
+        toast(result.error.message, 'error');
+        return;
+      }
+      // path 为 null = 用户在保存对话框里点了取消，不是失败
+      toast(result.data.path ? `已导出到 ${result.data.path}` : '已取消导出');
+    },
+    [toast],
+  );
+
+  const openCharacterExportMenu = useCallback(
+    (character: Character, rect: DOMRect, trigger: HTMLElement) => {
+      const hasArt = Boolean(character.avatarPath);
+      useMenuStore.getState().open(
+        { rect, targetId: character.id, trigger },
+        [
+          {
+            label: '导出为 JSON',
+            onSelect: () => void runCharacterExport(character, 'json'),
+          },
+          {
+            // 没卡面图就说清为什么灰着，而不是给一个点了报错的选项
+            label: hasArt ? '导出为 PNG 卡' : '导出为 PNG 卡（该角色没有卡面图）',
+            disabled: !hasArt,
+            onSelect: () => void runCharacterExport(character, 'png'),
+          },
+        ],
+        '导出角色卡',
+      );
+    },
+    [runCharacterExport],
+  );
+
   const requestDeleteConversation = useCallback(
     async (id: string) => {
       const stats = await api().conversations.stats(id);
@@ -520,6 +564,13 @@ export function App(): JSX.Element {
           const trigger = menu.anchor.trigger;
           menu.close();
           trigger?.focus();
+          /*
+           * 标记这一下 Esc 已被栈顶的菜单消费掉。
+           *
+           * 注册在后面的浮层（例如角色详情弹窗）会看到 `defaultPrevented`，
+           * 于是"按一下 Esc"只收起菜单，不会把底下的弹窗一起关掉。
+           */
+          event.preventDefault();
           return;
         }
         if (pendingDelete) {
@@ -689,12 +740,7 @@ export function App(): JSX.Element {
                 paragraphs: [`「${character.name}」`, '此操作不可撤销。'],
               });
             }}
-            onExport={(character) => {
-              void (async () => {
-                const result = await api().characters.export(character.id);
-                if (!result.ok) toast(result.error.message, 'error');
-              })();
-            }}
+            onExport={(character, rect, trigger) => openCharacterExportMenu(character, rect, trigger)}
             onNewConversation={(character) => openNewConversation(character)}
             onSave={(character, patch) => {
               void (async () => {

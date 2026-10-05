@@ -28,7 +28,8 @@ export interface CharactersPageProps {
   onSearch(query: string): void;
   onToggleFavorite(character: Character): void;
   onDelete(character: Character): void;
-  onExport(character: Character): void;
+  /** 导出：`rect` / `trigger` 用来把格式菜单锚在按钮上 */
+  onExport(character: Character, rect: DOMRect, trigger: HTMLElement): void;
   onNewConversation(character: Character): void;
   onSave(character: Character, patch: Partial<Character>): void;
 }
@@ -187,7 +188,7 @@ export function CharactersPage({
             setDetailId(null);
             setEditing(detailCharacter);
           }}
-          onExport={() => onExport(detailCharacter)}
+          onExport={(rect, trigger) => onExport(detailCharacter, rect, trigger)}
           onDelete={() => {
             setDetailId(null);
             onDelete(detailCharacter);

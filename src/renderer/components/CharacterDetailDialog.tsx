@@ -7,12 +7,16 @@
  * 先猜哪张卡有菜单。放进详情弹窗则一次解决三件事：看清这张卡是什么、
  * 哪里有全部动作、误触删除的概率更低。
  *
+ * 导出有 json / png 两种格式，所以按钮不直接导出，而是**开菜单**让用户选格式
+ * （锚点就是按钮自己，用既有的单一菜单实例，不另造一套浮层）。
+ *
  * 只读展示，编辑交给既有的 `CharacterEditor`（点「编辑」切过去）。
  */
 import { useEffect, useRef } from 'react';
 import type { JSX } from 'react';
 import type { Character } from '@shared/types.js';
 import { buildAvatarUrl } from '@shared/avatar-url.js';
+import { isMenuOpen, useMenuStore } from '../stores/menu.js';
 import { Icons } from './Icons.js';
 
 export interface CharacterDetailDialogProps {
@@ -21,7 +25,8 @@ export interface CharacterDetailDialogProps {
   onNewConversation(): void;
   onToggleFavorite(): void;
   onEdit(): void;
-  onExport(): void;
+  /** 导出：把自己当锚点交给调用方开格式菜单 */
+  onExport(rect: DOMRect, trigger: HTMLElement): void;
   onDelete(): void;
 }
 
@@ -43,6 +48,17 @@ export function CharacterDetailDialog({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        /*
+         * 菜单开着的时候 Esc 只关菜单，不穿透到底下的弹窗。
+         *
+         * 如果两层都响应，"按一下 Esc"会把弹窗和菜单一起关掉——用户以为只是
+         * 收起了菜单，结果整张卡也关了。菜单是后开的层，它才是栈顶。
+         *
+         * 两个判据都要看：应用外壳的全局 Esc 处理会先跑一遍并把菜单关掉
+         * （那时 `isMenuOpen` 已经是 false，只剩 `defaultPrevented` 能说明
+         * "这一下已经被消费了"）；而监听器的注册顺序不该被依赖。
+         */
+        if (event.defaultPrevented || isMenuOpen(useMenuStore.getState())) return;
         event.preventDefault();
         onClose();
       }
@@ -129,7 +145,13 @@ export function CharacterDetailDialog({
                   className="icon-btn"
                   title="导出"
                   aria-label="导出角色卡"
-                  onClick={onExport}
+                  aria-haspopup="menu"
+                  onClick={(event) =>
+                    onExport(
+                      event.currentTarget.getBoundingClientRect(),
+                      event.currentTarget,
+                    )
+                  }
                 >
                   {Icons.export()}
                 </button>

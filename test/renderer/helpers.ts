@@ -240,7 +240,14 @@ export function installFakeApi(options: FakeApiOptions = {}): {
       importFile: method('characters.importFile', async () => ok(null)),
       update: method('characters.update', async () => ok(makeCharacter())),
       delete: method('characters.delete', async () => ok({ ok: true })),
-      export: method('characters.export', async () => ok({ name: '爱丽丝' })),
+      // 默认"用户在保存对话框里点了取消"：path 为 null 但内容已生成
+      export: method('characters.export', async (id: unknown, format: unknown) =>
+        ok({
+          format: format === 'png' ? 'png' : 'json',
+          path: null,
+          card: { name: '爱丽丝' },
+        }),
+      ),
       tags: method('characters.tags', async () => ok([{ tag: '奇幻', count: 1 }])),
     },
     personas: {

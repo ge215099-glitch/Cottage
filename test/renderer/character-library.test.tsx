@@ -18,9 +18,14 @@ import {
   CharactersPage,
   type CharactersPageProps,
 } from '../../src/renderer/components/Pages.js';
+import { useMenuStore } from '../../src/renderer/stores/menu.js';
 import { makeCharacter } from './helpers.js';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // 菜单是模块级单例：不清掉会漏给下一个用例
+  useMenuStore.getState().close();
+});
 
 function setup(overrides: Partial<CharactersPageProps> = {}) {
   const props: CharactersPageProps = {
@@ -127,7 +132,12 @@ describe('角色详情弹窗', () => {
 
     // 收藏后弹窗保持打开（用户可能还要做别的）
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '导出角色卡' }));
-    expect(props.onExport).toHaveBeenCalledWith(expect.objectContaining({ id: 'chr_1' }));
+    // 导出要开格式菜单，所以顺带把锚点（矩形 + 触发元素）交给调用方
+    expect(props.onExport).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'chr_1' }),
+      expect.anything(),
+      expect.anything(),
+    );
 
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '删除角色卡' }));
     expect(props.onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 'chr_1' }));
@@ -169,5 +179,30 @@ describe('角色详情弹窗', () => {
     for (const label of ['描述', '性格', '场景', '开场白']) {
       expect(within(dialog).queryByText(label)).toBeNull();
     }
+  });
+
+  it('菜单开着时 Esc 只关菜单，不穿透关掉弹窗', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+
+    // 模拟"导出菜单已打开"这一状态（菜单层本身在 App 里，这里只验弹窗的 Esc 判据）
+    useMenuStore.getState().open(
+      {
+        rect: { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 },
+        targetId: 'chr_1',
+        trigger: null,
+      },
+      [{ label: '导出为 JSON', onSelect: () => undefined }],
+      '导出角色卡',
+    );
+
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog', { name: '角色详情：爱丽丝' })).toBeTruthy();
+
+    // 菜单关掉之后，Esc 才轮到弹窗
+    useMenuStore.getState().close();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

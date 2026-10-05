@@ -11,14 +11,19 @@
  * （选角色 → 选人设 → 选 Key）。
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../../src/renderer/App.js';
 import { useAppStore } from '../../src/renderer/stores/app.js';
 import { useChatStore } from '../../src/renderer/stores/chat.js';
+import { useMenuStore } from '../../src/renderer/stores/menu.js';
 import { installFakeApi, makeCharacter, makeConversation, makeProvider } from './helpers.js';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // 菜单是模块级单例：不清掉会漏给下一个用例
+  useMenuStore.getState().close();
+});
 
 const COMPOSER_PLACEHOLDER = '和角色聊聊…（Enter 发送，Shift+Enter 换行）';
 
@@ -104,5 +109,61 @@ describe('应用外壳的导航', () => {
       model: 'deepseek-chat',
       useFirstMessage: true,
     });
+  });
+});
+
+describe('角色卡导出：先选格式再导出', () => {
+  /** 挂载 App → 进角色库 → 开详情弹窗，停在"可以点导出"这一步。 */
+  async function openDetail(
+    characters = [makeCharacter({ avatarPath: 'avatars/lin.png' })],
+  ) {
+    const spies = installFakeApi({
+      conversations: [makeConversation()],
+      characters,
+      providers: [makeProvider()],
+    }).spies;
+    useAppStore.setState({ view: 'chat' });
+    useChatStore.setState({ conversationId: null, messages: [] });
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole('listitem')).toBeTruthy());
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '角色库' }));
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+    await user.click(screen.getByRole('button', { name: '导出角色卡' }));
+    return { user, spies };
+  }
+
+  it('导出按钮开的是格式菜单，不是直接导出', async () => {
+    const { spies } = await openDetail();
+    const menu = await screen.findByRole('menu', { name: '导出角色卡' });
+    expect(within(menu).getByRole('menuitem', { name: '导出为 JSON' })).toBeTruthy();
+    expect(within(menu).getByRole('menuitem', { name: '导出为 PNG 卡' })).toBeTruthy();
+    // 还没选格式，就不该已经发起导出
+    expect(spies['characters.export']).not.toHaveBeenCalled();
+  });
+
+  it('选「导出为 PNG 卡」时按 png 调主进程', async () => {
+    const { user, spies } = await openDetail();
+    const menu = await screen.findByRole('menu', { name: '导出角色卡' });
+    await user.click(within(menu).getByRole('menuitem', { name: '导出为 PNG 卡' }));
+
+    await waitFor(() => expect(spies['characters.export']).toHaveBeenCalledWith('chr_1', 'png'));
+  });
+
+  it('选「导出为 JSON」时按 json 调主进程', async () => {
+    const { user, spies } = await openDetail();
+    const menu = await screen.findByRole('menu', { name: '导出角色卡' });
+    await user.click(within(menu).getByRole('menuitem', { name: '导出为 JSON' }));
+
+    await waitFor(() => expect(spies['characters.export']).toHaveBeenCalledWith('chr_1', 'json'));
+  });
+
+  it('没有卡面图的角色：PNG 项是灰的，并说明原因', async () => {
+    await openDetail([makeCharacter({ avatarPath: null })]);
+    const menu = await screen.findByRole('menu', { name: '导出角色卡' });
+    const pngItem = within(menu).getByRole('menuitem', { name: /PNG/ });
+    expect((pngItem as HTMLButtonElement).disabled).toBe(true);
+    expect(pngItem.textContent).toContain('没有卡面图');
   });
 });
