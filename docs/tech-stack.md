@@ -248,6 +248,23 @@
 | event | `stream:chunk` / `stream:end` / `stream:error` | 主进程 → renderer 流式事件 |
 | event | `conversations:changed` / `messages:changed` | 增量通知，列表不做整表重取（UI 文档 5.6） |
 
+> **勘误（v1.0 修订）：可选入参的空值约定必须在两侧显式对齐**
+>
+> preload 转发可选参数时写的是 `invoke(INVOKE.x, arg ?? null)`——也就是说"没传"到主进程
+> 时是 **`null`** 而不是 `undefined`。但 zod 的 `.optional()` 只接受 `undefined`，
+> 于是 `characters.list()` 被判成入参校验失败，**角色库永远显示"还没有角色卡"**；
+> 更隐蔽的是 `characters` store 一直为空，所以聊天里消息的角色名只能退化成"角色"二字。
+> 而同一个页面的标签筛选是好的（`characters:tags` 不经过那个 schema），看起来很像渲染 bug。
+>
+> 结论与约定：
+>
+> 1. 可选参数要么在 preload 里省略（不传 `undefined`），要么在主进程 schema 里用
+>    `.nullish()`——**两者必须选一个并对齐**；
+> 2. `characters:list` 采用后者：`{}`、`undefined`、`null` 都表示"不筛选"；
+> 3. 由 `test/ipc-registration.test.ts` 的「IPC 可选入参的空值约定」守住：
+>    它逐一断言 preload 里每个 `?? null` 都在主进程有对应 handler，
+>    并断言 schema 既接受三种空写法、又仍然拒绝真正非法的查询。
+
 ### 6.3 硬性安全约束
 
 | 项 | 取值 | 理由 |

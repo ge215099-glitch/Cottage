@@ -17,16 +17,23 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ALL_INVOKE_CHANNELS, INVOKE } from '../src/shared/ipc.js';
+import { listCharactersInputSchema } from '../src/shared/schemas.js';
 
 // vitest 以项目根为 cwd 运行；两个文件都必须读到，读不到要立刻炸（否则断言会空转假绿）
 const repoRoot = process.cwd();
 const contractFile = path.join(repoRoot, 'src/shared/ipc.ts');
 const mainIpcFile = path.join(repoRoot, 'src/main/ipc/index.ts');
-for (const file of [contractFile, mainIpcFile]) {
+const preloadFile = path.join(repoRoot, 'src/preload/index.ts');
+for (const file of [contractFile, mainIpcFile, preloadFile]) {
   if (!existsSync(file)) throw new Error(`测试无法定位源码文件：${file}`);
 }
 const ipcContractSource = readFileSync(contractFile, 'utf8');
 const ipcMainSource = readFileSync(mainIpcFile, 'utf8');
+const preloadSource = readFileSync(preloadFile, 'utf8');
+
+// 两个 describe 都要用，所以在模块作用域解析一次
+const declared = declaredChannels(ipcContractSource);
+const registered = registeredKeys(ipcMainSource);
 
 /** 从 `export const INVOKE = { ... } as const` 里取出键 → 通道名。 */
 function declaredChannels(source: string): Map<string, string> {
@@ -53,9 +60,6 @@ function registeredKeys(source: string): Set<string> {
 }
 
 describe('IPC 通道声明与 handler 注册', () => {
-  const declared = declaredChannels(ipcContractSource);
-  const registered = registeredKeys(ipcMainSource);
-
   it('源码解析本身是有效的（否则下面的断言会变成空转）', () => {
     // 解析失败时必须炸，否则"两边都空"会让测试假绿。
     expect(declared.size).toBeGreaterThan(40);
@@ -99,5 +103,46 @@ describe('IPC 通道声明与 handler 注册', () => {
       'export:conversation-json',
       'export:plain-config',
     ]);
+  });
+});
+
+/**
+ * 入参在 preload ↔ main 之间的空值约定。
+ *
+ * 这一组守的是"preload 发得出去、main 收得下来"。通道名对得上不代表参数对得上：
+ * preload 里 `invoke(INVOKE.x, arg ?? null)` 会把"没传"变成 `null` 送过去，
+ * 而 zod 的 `.optional()` 只接受 `undefined`——两边各自都"没错"，合起来就是坏功能。
+ */
+describe('IPC 可选入参的空值约定', () => {
+  it('characters.list 的三种"不筛选"写法都被接受', () => {
+    // 回归锚点：只写 .optional() 时 `characters.list()` 必定校验失败，
+    // 角色库**永远**显示"还没有角色卡"，而标签筛选正常——实测踩过。
+    expect(listCharactersInputSchema.safeParse(null).success).toBe(true);
+    expect(listCharactersInputSchema.safeParse(undefined).success).toBe(true);
+    expect(listCharactersInputSchema.safeParse({}).success).toBe(true);
+    expect(listCharactersInputSchema.safeParse({ search: '林', favoriteOnly: true }).success).toBe(
+      true,
+    );
+  });
+
+  it('容忍 null 不等于放行一切：真正非法的查询仍然拒绝', () => {
+    expect(listCharactersInputSchema.safeParse(42).success).toBe(false);
+    expect(listCharactersInputSchema.safeParse('林').success).toBe(false);
+    expect(listCharactersInputSchema.safeParse({ favoriteOnly: 'yes' }).success).toBe(false);
+    expect(listCharactersInputSchema.safeParse({ tags: 'x' }).success).toBe(false);
+    expect(listCharactersInputSchema.safeParse({ search: 'x'.repeat(201) }).success).toBe(false);
+  });
+
+  it('preload 每次用 `?? null` 发可选参数，主进程那侧都必须有对应 handler', () => {
+    // 把所有这类通道列出来，避免"新增了一个 ?? null 但主进程没接"再次发生。
+    // 目前有两处：characters.list（曾出问题）与 conversations.restart（一直用 .nullable()）。
+    const nullishKeys = [...preloadSource.matchAll(/INVOKE\.([A-Za-z0-9_]+),\s*[^)]*?\?\?\s*null/g)]
+      .map((m) => m[1]!);
+    expect(nullishKeys.sort()).toEqual(['charactersList', 'conversationsRestart']);
+    for (const key of nullishKeys) {
+      expect(registered.has(key), `preload 用 ?? null 发送 INVOKE.${key}，主进程却没有 handler`).toBe(
+        true,
+      );
+    }
   });
 });

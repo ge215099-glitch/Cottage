@@ -104,13 +104,22 @@ export const compressInputSchema = z.object({
   model: z.string().max(200).optional(),
 });
 
+/**
+ * 角色列表查询。**三种"不筛选"的写法都必须接受**：`{}`、`undefined`、`null`。
+ *
+ * 为什么必须显式接受 `null`：preload 用 `query ?? null` 发送这个可选参数
+ * （见 src/preload/index.ts 的 `characters.list`），所以"不传查询"到主进程时是 `null`
+ * 而不是 `undefined`。这里原本只写 `.optional()`，于是 `characters.list()` 被判成
+ * 入参校验失败——角色库列表**永远显示"还没有角色卡"**，而标签筛选却是正常的
+ * （`characters:tags` 不走这个 schema），看起来很像渲染 bug。这个坑真的踩过。
+ */
 export const listCharactersInputSchema = z
   .object({
     search: z.string().max(200).optional(),
     tags: z.array(z.string().max(100)).max(50).optional(),
     favoriteOnly: z.boolean().optional(),
   })
-  .optional();
+  .nullish();
 
 export const tokensPreviewInputSchema = z.object({
   conversationId: idSchema,
