@@ -69,10 +69,16 @@ export const INVOKE = {
   settingsUpdate: 'settings:update',
   appDiagnostics: 'app:diagnostics',
 
-  /* 导出 */
+  /*
+   * 导出。注意域划分（技术方案 6.2 的通道表）：
+   *   - 角色卡导出属于 `characters:*`（`INVOKE.charactersExport`），不在这里；
+   *   - `export:*` 只放"会话导出"与"明文配置包"。
+   * 这里曾经多出一个 `exportCharacterCard: 'export:character-card'`，它既没有 handler
+   * 也没有任何调用方，与上表冲突——而 `registerIpc` 的"通道齐全"断言会在启动时直接抛错，
+   * 于是整个应用起不来。别再往这里加角色卡导出。
+   */
   exportConversationMarkdown: 'export:conversation-markdown',
   exportConversationJson: 'export:conversation-json',
-  exportCharacterCard: 'export:character-card',
   exportPlainConfig: 'export:plain-config',
 } as const;
 
