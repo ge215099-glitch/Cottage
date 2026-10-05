@@ -75,6 +75,46 @@ export function createConversation(
   return getConversation(db, id)!;
 }
 
+/** 会话标题长度上限（与 `createConversationInputSchema` 的 80 对齐）。 */
+export const TITLE_MAX_LENGTH = 80;
+
+/**
+ * 给"自动命名"的会话取一个不重名的标题。
+ *
+ * 产品规则：新会话默认叫**角色名**；如果重名，就在后面加 " 2"、" 3"…… 以此类推。
+ *
+ * 两个刻意的决定：
+ *   - **只在自动命名时调用**。用户手动改过的名字（`renameConversation`）一律不干预，
+ *     否则"我把名字改成和别人一样"会变成一件做不到的事。
+ *   - 重名判断查**全表**，不只看同一个角色的会话。标题只会出现在一个列表里，
+ *     只有全局唯一才不会出现两条一模一样的标题让人分不清。
+ *
+ * 放在 DAO 而不是 renderer：唯一性以库为准，renderer 手里的列表可能已经过期。
+ */
+export function nextConversationTitle(db: DatabaseDriver, base: string): string {
+  const clean = base.trim() || '新对话';
+  const taken = new Set(
+    db
+      .prepare<{ title: string }>('SELECT title FROM conversations')
+      .all()
+      .map((row) => row.title),
+  );
+
+  /** 把 base 截到"加上后缀也不超上限"。 */
+  const fit = (suffix: string): string => {
+    const room = TITLE_MAX_LENGTH - suffix.length;
+    return (clean.length > room ? clean.slice(0, Math.max(1, room)) : clean) + suffix;
+  };
+
+  if (!taken.has(fit(''))) return fit('');
+  for (let n = 2; n < 10_000; n += 1) {
+    const candidate = fit(` ${n}`);
+    if (!taken.has(candidate)) return candidate;
+  }
+  // 理论上到不了这里；真到了就退化成一个不会重名的名字
+  return fit(` ${Date.now()}`);
+}
+
 /**
  * 只改标题：**默认不修改 `updated_at`**，避免"刚改完名就跳走"（UI 文档 4.6）。
  * 首条消息派生标题时传 `touch: true` 也无害——紧随其后写入的消息本来就会推进它。

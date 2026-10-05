@@ -813,3 +813,68 @@ describe('设置 DAO', () => {
     expect(settings.readSettings(db).autoCompressThreshold).toBe(0.8);
   });
 });
+
+/**
+ * 会话自动命名（产品要求）：默认用角色名，重名则 " 2"、" 3"……
+ *
+ * 放在 DAO 层是因为唯一性以库为准——renderer 手里的列表可能已经过期。
+ */
+describe('会话自动命名与重名递增', () => {
+  it('名字没被占用时直接用角色名', () => {
+    expect(conversations.nextConversationTitle(db, '林晚')).toBe('林晚');
+  });
+
+  it('重名时依次加 " 2"、" 3"', () => {
+    const title = conversations.nextConversationTitle(db, '林晚');
+    seedConversation(title);
+    expect(conversations.nextConversationTitle(db, '林晚')).toBe('林晚 2');
+
+    seedConversation(conversations.nextConversationTitle(db, '林晚'));
+    expect(conversations.nextConversationTitle(db, '林晚')).toBe('林晚 3');
+  });
+
+  it('"林晚 2" 被单独占用也不会跳过它造成空洞', () => {
+    seedConversation('林晚 2');
+    // 林晚 本身没被占，所以先给"林晚"；再要一次才会落到"林晚 2"之后的 3
+    expect(conversations.nextConversationTitle(db, '林晚')).toBe('林晚');
+    seedConversation('林晚');
+    expect(conversations.nextConversationTitle(db, '林晚')).toBe('林晚 3');
+  });
+
+  it('首尾空白被忽略，空名字退化为「新对话」', () => {
+    seedConversation('林晚');
+    expect(conversations.nextConversationTitle(db, '  林晚  ')).toBe('林晚 2');
+    expect(conversations.nextConversationTitle(db, '   ')).toBe('新对话');
+  });
+
+  it('超长角色名会被截断，且带上后缀仍不超上限', () => {
+    const long = '角'.repeat(200);
+    seedConversation(conversations.nextConversationTitle(db, long));
+    const second = conversations.nextConversationTitle(db, long);
+
+    expect(second.length).toBeLessThanOrEqual(conversations.TITLE_MAX_LENGTH);
+    expect(second.endsWith(' 2')).toBe(true);
+  });
+
+  it('重名判断是全库的，不只看同一个角色', () => {
+    const other = characters.importCharacter(
+      db,
+      {
+        spec: 'chara_card_v2',
+        spec_version: '2.0',
+        data: { name: '老周', description: '', personality: '', scenario: '', first_mes: '' },
+      },
+      T0,
+    ).character.id;
+
+    seedConversation('林晚');
+    // 换成另一个角色，仍然要避开已存在的"林晚"
+    const title = conversations.nextConversationTitle(db, '林晚');
+    conversations.createConversation(
+      db,
+      { title, characterId: other, personaId: null, providerId: null, model: 'deepseek-chat' },
+      T0,
+    );
+    expect(title).toBe('林晚 2');
+  });
+});

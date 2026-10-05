@@ -348,7 +348,8 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
       const conversation = conversationsDao.createConversation(
         db,
         {
-          title: input.title?.trim() || '新对话',
+          // 默认用角色名命名；重名则 " 2"、" 3"……（用户显式传了标题就尊重它）
+          title: input.title?.trim() || conversationsDao.nextConversationTitle(db, character.name),
           characterId: input.characterId,
           personaId: input.personaId ?? null,
           providerId: input.providerId ?? null,
