@@ -11,111 +11,25 @@
 import { describe, expect, it } from 'vitest';
 import {
   PngCardError,
-  crc32,
   embedPngCardPayload,
   encodeBase64,
   extractPngCardPayload,
   isPngFile,
 } from '../src/core/png-card.js';
 import { parseCharacterCard } from '../src/core/character-card.js';
+import {
+  IHDR,
+  IEND,
+  cardBase64,
+  chunk,
+  listChunks,
+  png,
+  textChunk,
+  ztxtChunk,
+  itxtChunk,
+} from './helpers/png.js';
 
 /* ------------------------------- 合成 PNG ------------------------------- */
-
-const CRC_TABLE = (() => {
-  const table = new Int32Array(256);
-  for (let n = 0; n < 256; n += 1) {
-    let c = n;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c;
-  }
-  return table;
-})();
-
-function crc32(bytes: Uint8Array): number {
-  let c = -1;
-  for (const byte of bytes) c = CRC_TABLE[(c ^ byte) & 0xff]! ^ (c >>> 8);
-  return (c ^ -1) >>> 0;
-}
-
-function chunk(type: string, data: Uint8Array): Uint8Array {
-  const typeBytes = new Uint8Array([...type].map((ch) => ch.charCodeAt(0)));
-  const body = new Uint8Array(typeBytes.length + data.length);
-  body.set(typeBytes, 0);
-  body.set(data, typeBytes.length);
-
-  const out = new Uint8Array(4 + body.length + 4);
-  const view = new DataView(out.buffer);
-  view.setUint32(0, data.length);
-  out.set(body, 4);
-  view.setUint32(4 + body.length, crc32(body));
-  return out;
-}
-
-function latin1Bytes(text: string): Uint8Array {
-  return new Uint8Array([...text].map((ch) => ch.charCodeAt(0) & 0xff));
-}
-
-function textChunk(keyword: string, text: string): Uint8Array {
-  const payload = new Uint8Array(keyword.length + 1 + text.length);
-  payload.set(latin1Bytes(keyword), 0);
-  payload[keyword.length] = 0;
-  payload.set(latin1Bytes(text), keyword.length + 1);
-  return chunk('tEXt', payload);
-}
-
-function ztxtChunk(keyword: string, compressed: Uint8Array): Uint8Array {
-  const payload = new Uint8Array(keyword.length + 2 + compressed.length);
-  payload.set(latin1Bytes(keyword), 0);
-  payload[keyword.length] = 0;
-  payload[keyword.length + 1] = 0; // 压缩方法：deflate
-  payload.set(compressed, keyword.length + 2);
-  return chunk('zTXt', payload);
-}
-
-function itxtChunk(keyword: string, text: string, compressed = false): Uint8Array {
-  const head = latin1Bytes(`${keyword}\0${compressed ? '\u0001' : '\u0000'}\u0000\u0000\u0000`);
-  const textBytes = new TextEncoder().encode(text);
-  const payload = new Uint8Array(head.length + textBytes.length);
-  payload.set(head, 0);
-  payload.set(textBytes, head.length);
-  return chunk('iTXt', payload);
-}
-
-const IHDR = chunk(
-  'IHDR',
-  (() => {
-    const data = new Uint8Array(13);
-    const view = new DataView(data.buffer);
-    view.setUint32(0, 768);
-    view.setUint32(4, 1376);
-    data[8] = 8;
-    data[9] = 6;
-    return data;
-  })(),
-);
-const IEND = chunk('IEND', new Uint8Array(0));
-
-function png(...chunks: Uint8Array[]): Uint8Array {
-  const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const total = signature.length + chunks.reduce((sum, c) => sum + c.length, 0);
-  const out = new Uint8Array(total);
-  out.set(signature, 0);
-  let offset = signature.length;
-  for (const c of chunks) {
-    out.set(c, offset);
-    offset += c.length;
-  }
-  return out;
-}
-
-/** 角色卡 JSON → base64（与真实卡一致：base64 在文本块里，按 UTF-8 还原）。 */
-function cardBase64(card: unknown): string {
-  const json = JSON.stringify(card);
-  const utf8 = new TextEncoder().encode(json);
-  let binary = '';
-  for (const byte of utf8) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
 
 const V2_CARD = {
   spec: 'chara_card_v2',
@@ -235,32 +149,6 @@ describe('extractPngCardPayload', () => {
 /* ------------------------------------------------------------------ */
 /* 写回（导出 PNG 卡）                                                 */
 /* ------------------------------------------------------------------ */
-
-/** 拆块（测试侧独立实现，不复用被测代码的解析路径）。 */
-function listChunks(
-  bytes: Uint8Array,
-): Array<{ type: string; keyword: string; text: string; crcOk: boolean; raw: Uint8Array }> {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const out: Array<{ type: string; keyword: string; text: string; crcOk: boolean; raw: Uint8Array }> = [];
-  let offset = 8;
-  while (offset + 12 <= bytes.length) {
-    const length = view.getUint32(offset);
-    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
-    const data = bytes.subarray(offset + 8, offset + 8 + length);
-    const stored = view.getUint32(offset + 8 + length);
-    const body = bytes.subarray(offset + 4, offset + 8 + length);
-    const nul = data.indexOf(0);
-    out.push({
-      type,
-      keyword: nul > 0 ? String.fromCharCode(...data.subarray(0, nul)) : '',
-      text: nul > 0 ? String.fromCharCode(...data.subarray(nul + 1)) : '',
-      crcOk: crc32(body) === stored,
-      raw: bytes.subarray(offset, offset + 12 + length),
-    });
-    offset += 12 + length;
-  }
-  return out;
-}
 
 const EDITED_CARD = {
   spec: 'chara_card_v2',

@@ -87,6 +87,23 @@ export interface CharacterImportResult {
   preservedFields: string[];
 }
 
+/**
+ * 角色卡导出格式。
+ *
+ * 两种都是给别人用的交换格式，不是 Cottage 内部格式：
+ *   - `json`：只有数据，任何工具都能读；
+ *   - `png`：**原卡面图 + 数据**，SillyTavern 等应用直接可用。
+ */
+export type CharacterExportFormat = 'json' | 'png';
+
+/** 角色卡导出结果。`path` 为 null 表示用户在保存对话框里取消了。 */
+export interface CharacterExportResult {
+  format: CharacterExportFormat;
+  path: string | null;
+  /** 实际导出的卡内容（UI 可用它展示"哪些第三方字段被原样保留"） */
+  card: Record<string, unknown>;
+}
+
 export interface Persona {
   id: string;
   name: string;

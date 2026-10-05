@@ -147,6 +147,14 @@ export const importCharacterInputSchema = z.object({
   card: z.union([z.record(z.unknown()), z.string().max(2_000_000)]),
 });
 
+/**
+ * 角色卡导出格式。
+ *
+ * 不给默认值：preload 已经把「没传」归一成 `'json'`（见 `src/preload/index.ts`），
+ * 所以主进程收到的永远是这两个值之一，schema 可以严格到底。
+ */
+export const characterExportFormatSchema = z.enum(['json', 'png']);
+
 export const exportConversationSchema = z.object({
   conversationId: idSchema,
 });

@@ -13,6 +13,8 @@ import type {
   AppDiagnostics,
   AppSettings,
   Character,
+  CharacterExportFormat,
+  CharacterExportResult,
   CharacterImportResult,
   CompressProgressEvent,
   CompressResult,
@@ -63,12 +65,17 @@ export interface CottageApi {
     list(query?: ListCharactersPayload): Promise<Result<Character[]>>;
     get(id: string): Promise<Result<Character | null>>;
     import(card: unknown): Promise<Result<CharacterImportResult>>;
-    /** 打开文件选择框导入（PNG 解析属 MVP 外，这里只接受 JSON 文件） */
+    /** 打开文件选择框导入；PNG 卡会解析出数据，并把图片本身存成卡面图 */
     importFile(): Promise<Result<CharacterImportResult | null>>;
     update(id: string, patch: CharacterUpdatePayload): Promise<Result<Character>>;
     delete(id: string): Promise<Result<{ ok: boolean; reason?: string }>>;
-    /** 导出为 v2/v3 卡（raw_json 为基底） */
-    export(id: string): Promise<Result<Record<string, unknown>>>;
+    /**
+     * 导出为 v2/v3 卡（`raw_json` 为基底）。
+     *
+     * `format` 决定写出来的文件：`json` 是纯数据，`png` 是**原卡面图 + 数据**。
+     * PNG 卡需要角色有卡面图，没有就报错而不是造一张图出来。
+     */
+    export(id: string, format?: CharacterExportFormat): Promise<Result<CharacterExportResult>>;
     tags(): Promise<Result<Array<{ tag: string; count: number }>>>;
   };
   personas: {

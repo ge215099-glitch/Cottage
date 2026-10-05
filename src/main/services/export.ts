@@ -1,15 +1,22 @@
 /**
- * 导出服务（产品设计文档 3.1 / 3.6-⑧）。
+ * 导出服务（产品设计文档 3.1 / 3.2 / 3.6-⑧）。
  *
- * 两条安全规则在这里落地：
+ * 三条安全规则在这里落地：
  *   - **默认导出范围不含 Key**。`exportConversation` / `exportCharacter` 都碰不到密钥。
  *   - 只有 `exportPlainConfig` 会带 Key，且必须 `confirmed === true`
  *     （用户显式二次确认），文案里还要说明"密文绑定本机，拷库到另一台机器也解不开"。
+ *   - 角色卡导出**不新造图片**：PNG 卡用的就是这张卡原来的卡面图，没有就报错，
+ *     而不是生成一张灰色占位图冒充卡面。
  */
-import { exportCharacterCard } from '@core/character-card.js';
+import { readFile } from 'node:fs/promises';
+import { cardTextChunkKeyword } from '@core/character-card.js';
+import { embedPngCardPayload, isPngFile } from '@core/png-card.js';
+import { buildAvatarUrl } from '@shared/avatar-url.js';
+import type { CharacterExportFormat } from '@shared/types.js';
 import { decryptSecret } from '../secrets/index.js';
 import type { AppContext } from '../context.js';
-import { getCharacter } from '../db/dao/characters.js';
+import { AVATAR_DIR, resolveAvatarRequest } from '../avatars.js';
+import { exportCharacter as exportCharacterCard, getCharacter } from '../db/dao/characters.js';
 import {
   getConversation,
   getConversationStats,
@@ -22,7 +29,7 @@ import { getProviderSecretForMain, listProviders } from '../db/dao/providers.js'
 import { readSettings } from '../db/dao/settings.js';
 
 export class ExportError extends Error {
-  readonly code: 'NOT_FOUND' | 'NEEDS_CONFIRMATION' | 'DECRYPT_FAILED';
+  readonly code: 'NOT_FOUND' | 'NEEDS_CONFIRMATION' | 'DECRYPT_FAILED' | 'NO_AVATAR' | 'BAD_AVATAR';
   constructor(code: ExportError['code'], message: string) {
     super(message);
     this.name = 'ExportError';
@@ -114,38 +121,72 @@ export function exportConversationJson(ctx: AppContext, conversationId: string):
   return JSON.stringify(payload, null, 2);
 }
 
-/** 导出角色卡（raw_json 为基底，只覆盖 Cottage 管理的字段）。 */
+/**
+ * 导出角色卡（`raw_json` 为基底，只覆盖 Cottage 管理的字段）。
+ *
+ * 具体拼装交给 DAO 层（`characters.exportCharacter`）：它同时握着 `raw_json`
+ * 与角色字段，是唯一不该有第二份实现的地方。
+ */
 export function exportCharacter(ctx: AppContext, characterId: string): Record<string, unknown> {
-  const character = getCharacter(ctx.db, characterId);
-  if (!character) throw new ExportError('NOT_FOUND', '角色不存在');
+  const card = exportCharacterCard(ctx.db, characterId);
+  if (!card) throw new ExportError('NOT_FOUND', '角色不存在');
+  return card;
+}
 
-  const raw = ctx.db
-    .prepare<{ raw_json: string }>('SELECT raw_json FROM characters WHERE id = ?')
-    .get(characterId);
-  let rawJson: Record<string, unknown> = {};
-  try {
-    const parsed = raw ? JSON.parse(raw.raw_json) : null;
-    if (parsed && typeof parsed === 'object') rawJson = parsed as Record<string, unknown>;
-  } catch {
-    rawJson = {};
+/**
+ * 导出 PNG 卡：**原卡面图 + 新写进去的角色数据**。
+ *
+ * 卡面图必须是当初导入时存下来的那张 PNG——我们只往它的文本块里写数据，
+ * 不重新编码图片，所以像素与其它元数据都是原样。
+ *
+ * 读盘走 `resolveAvatarRequest`（头像协议那套校验）：路径必须落在
+ * `<userData>/avatars/` 之内、扩展名在白名单里。这里刻意复用它而不是自己拼路径，
+ * 免得出现"协议读取被严格校验、导出读取却放行"的第二套规则。
+ */
+export async function exportCharacterPng(
+  ctx: AppContext,
+  characterId: string,
+): Promise<{ card: Record<string, unknown>; bytes: Uint8Array }> {
+  const card = exportCharacter(ctx, characterId);
+  const avatarPath = getCharacter(ctx.db, characterId)?.avatarPath ?? null;
+
+  if (!avatarPath) {
+    throw new ExportError(
+      'NO_AVATAR',
+      '这个角色没有卡面图，导不出 PNG 卡（PNG 卡必须带图）；请改用 JSON 导出',
+    );
   }
 
-  return exportCharacterCard(
-    rawJson,
-    {
-      name: character.name,
-      description: character.description,
-      personality: character.personality,
-      scenario: character.scenario,
-      firstMes: character.firstMes,
-      alternateGreetings: character.alternateGreetings,
-      mesExample: character.mesExample,
-      systemPrompt: character.systemPrompt,
-      postHistoryInstructions: character.postHistoryInstructions,
-      tags: character.tags,
-    },
-    { avatar: character.avatarPath },
-  );
+  const resolved = resolveAvatarRequest(ctx.userDataDir, buildAvatarUrl(avatarPath) ?? '');
+  if (!resolved) {
+    throw new ExportError('NO_AVATAR', `卡面图文件已丢失（${AVATAR_DIR}/…），无法导出 PNG 卡`);
+  }
+
+  const bytes = new Uint8Array(await readFile(resolved.filePath));
+  if (!isPngFile(bytes)) {
+    throw new ExportError('BAD_AVATAR', '卡面图不是 PNG，角色数据写不回去；请改用 JSON 导出');
+  }
+
+  return {
+    card,
+    bytes: embedPngCardPayload(bytes, JSON.stringify(card, null, 2), cardTextChunkKeyword(card)),
+  };
+}
+
+/**
+ * 按格式准备导出内容（**只生成，不落盘**）。
+ *
+ * 落盘那一步要过系统保存对话框，只能在 IPC 层做；但"导出什么内容"属于业务，
+ * 由这里一处决定，免得 handler 里长出 if/else 分支。
+ * `bytes` 为 null 表示 JSON 卡（内容就是 `card` 本身，不需要额外字节）。
+ */
+export async function prepareCharacterExport(
+  ctx: AppContext,
+  characterId: string,
+  format: CharacterExportFormat,
+): Promise<{ card: Record<string, unknown>; bytes: Uint8Array | null }> {
+  if (format === 'png') return await exportCharacterPng(ctx, characterId);
+  return { card: exportCharacter(ctx, characterId), bytes: null };
 }
 
 /**

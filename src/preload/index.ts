@@ -15,6 +15,7 @@ import type {
   AppDiagnostics,
   AppSettings,
   Character,
+  CharacterExportResult,
   CharacterImportResult,
   CompressProgressEvent,
   CompressResult,
@@ -82,7 +83,8 @@ const api: CottageApi = {
     importFile: () => invoke<CharacterImportResult | null>(INVOKE.charactersImportFile),
     update: (id, patch: CharacterUpdatePayload) => invoke<Character>(INVOKE.charactersUpdate, id, patch),
     delete: (id) => invoke<{ ok: boolean; reason?: string }>(INVOKE.charactersDelete, id),
-    export: (id) => invoke<Record<string, unknown>>(INVOKE.charactersExport, id),
+    export: (id, format) =>
+      invoke<CharacterExportResult>(INVOKE.charactersExport, id, format ?? 'json'),
     tags: () => invoke<Array<{ tag: string; count: number }>>(INVOKE.charactersTags),
   },
   personas: {

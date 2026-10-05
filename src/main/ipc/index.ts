@@ -32,6 +32,7 @@ import * as summariesDao from '../db/dao/summaries.js';
 import * as settingsDao from '../db/dao/settings.js';
 
 import {
+  characterExportFormatSchema,
   characterUpdateSchema,
   compressInputSchema,
   conversationPatchSchema,
@@ -54,14 +55,14 @@ import { importCharacterFromFile } from '../services/character-import.js';
 import {
   ExportError,
   conversationStats,
-  exportCharacter,
   exportConversationJson,
   exportConversationMarkdown,
   exportPlainConfig,
+  prepareCharacterExport,
 } from '../services/export.js';
 import { ProviderTestError, fetchModelsFromProvider, testProvider } from '../services/provider-test.js';
 import { encryptSecret } from '../secrets/index.js';
-import { sanitizeFileName } from '../services/file-name.js';
+import { sanitizeFileName, withExportExtension } from '../services/file-name.js';
 
 /** 诊断页要用到；由主进程入口注入，避免此处 import main/index 造成循环。 */
 let appVersion = '0.1.0';
@@ -82,10 +83,15 @@ function toNormalizedError(err: unknown): NormalizedError {
     return makeError(map[err.code], err.message);
   }
   if (err instanceof ExportError) {
-    return makeError(
-      err.code === 'NEEDS_CONFIRMATION' ? 'INVALID_REQUEST' : 'NOT_FOUND',
-      err.message,
-    );
+    // 导不出 PNG 卡不是"没找到东西"，而是"这个请求对这张卡不成立"——
+    // 用 NOT_FOUND 会让 UI 提示"角色不存在"，跟用户的感受完全对不上。
+    const code: NormalizedError['code'] =
+      err.code === 'NO_AVATAR' || err.code === 'BAD_AVATAR'
+        ? 'INVALID_REQUEST'
+        : err.code === 'NEEDS_CONFIRMATION'
+          ? 'INVALID_REQUEST'
+          : 'NOT_FOUND';
+    return makeError(code, err.message);
   }
   if (err instanceof ProviderTestError) return makeError('INVALID_REQUEST', err.message);
   if (err instanceof CharacterCardError) return makeError('VALIDATION_ERROR', err.message);
@@ -272,17 +278,32 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
 
   handlers.set(
     INVOKE.charactersExport,
-    validated(idArg, async (id) => {
-      const card = exportCharacter(ctx, id);
+    validated(z.tuple([idArg, characterExportFormatSchema]), async ([id, format]) => {
+      /*
+       * 先把内容生成好，再弹保存对话框。
+       *
+       * 顺序反过来的话，"这个角色没有卡面图"会变成"用户先挑一遍保存位置、
+       * 然后才被告知导不出来"。内容生成是纯读操作，先做没有副作用。
+       */
+      const prepared = await prepareCharacterExport(ctx, id, format);
+      const isPng = prepared.bytes !== null;
+      const card = prepared.card;
+
       const picked = await dialog.showSaveDialog({
-        title: '导出角色卡',
-        defaultPath: `${sanitizeFileName(String(card.name ?? 'character'))}.json`,
-        filters: [{ name: '角色卡 JSON', extensions: ['json'] }],
+        title: isPng ? '导出 PNG 角色卡' : '导出角色卡 JSON',
+        defaultPath: `${sanitizeFileName(String(card['name'] ?? 'character'))}.${isPng ? 'png' : 'json'}`,
+        filters: isPng
+          ? [{ name: 'PNG 角色卡（卡面图 + 数据）', extensions: ['png'] }]
+          : [{ name: '角色卡 JSON', extensions: ['json'] }],
       });
-      if (!picked.canceled && picked.filePath) {
-        await writeFile(picked.filePath, JSON.stringify(card, null, 2), 'utf8');
-      }
-      return card;
+      if (picked.canceled || !picked.filePath) return { format, path: null, card };
+
+      // 用户可能手输了个没有扩展名的文件名；补上，否则双击打不开
+      const target = withExportExtension(picked.filePath, isPng ? 'png' : 'json');
+      if (prepared.bytes) await writeFile(target, prepared.bytes);
+      else await writeFile(target, JSON.stringify(card, null, 2), 'utf8');
+
+      return { format, path: target, card };
     }),
   );
 
