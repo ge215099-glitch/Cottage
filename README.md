@@ -64,7 +64,7 @@ pnpm verify:all     # 上面全部串起来跑一遍
 
 | 层 | 环境 | 覆盖什么 |
 |---|---|---|
-| 单元 | 纯 Node | core 纯函数（组装幂等、变量替换、token 求和、适配器序列化、SSE 折叠）、迁移幂等、压缩事务原子性、截断级联失效、`pinned_at` 不改 `updated_at`、密钥边界、CSP 与导航判定 |
+| 单元 | 纯 Node | core 纯函数（组装幂等、变量替换、token 求和、适配器序列化、SSE 折叠）、迁移幂等、压缩事务原子性、截断级联失效、`pinned_at` 不改 `updated_at`、密钥边界、CSP 与导航判定、IPC 通道声明与 handler 注册的完整性（静态比对） |
 | 组件 | jsdom + RTL | 侧栏悬停与菜单时序、行内重命名、列表两段分组、搜索过滤、键盘导航、占用条阈值、「约」前缀、无头像断言 |
 | 冒烟（开发） | node + Vite | `pnpm dev` 三段构建、dev server 端口、renderer 入口与 HMR 客户端 |
 | 冒烟（生产） | Electron | 主进程启动链路（开库 → 迁移 → 清扫 → 注册 IPC → 建窗口） |
@@ -75,8 +75,20 @@ pnpm verify:all     # 上面全部串起来跑一遍
 所以它们既没写、也不假装覆盖。
 
 两个冒烟脚本各管一半，谁都不假装覆盖另一半：`smoke:dev` 用哑进程替换 Electron，
-只验证 Vite dev server 这条链路（因为真实 Electron 在某些环境起不来会把 server 一起带走）；
-`smoke` 验证 Electron 能启动主进程，但它不验证界面渲染。
+只验证 Vite dev server 这条链路；`smoke` 真的拉起 Electron，验证主进程启动链，
+但它不验证界面渲染。
+
+`smoke` 的就绪判据是主进程在**建窗口之后**打印的「启动完成」，而不是更早的
+「数据库已打开」——后者发生在迁移之前，拿它当判据会让"迁移之后就抛错"的启动失败
+显示为通过（实测踩过一次：一个 `INVOKE` 通道漏了 handler，应用根本起不来，冒烟却是绿的）。
+
+> **受限环境下的两点说明。** Chromium 的进程沙箱在受限目录里无法初始化，进程会以
+> `0x80000003` 立即退出且没有任何输出；同一个二进制放到别处就完全正常，所以**这与
+> Electron 版本无关**，别据此升级 Electron。`smoke` 默认加 `--no-sandbox`（它要验的是
+> 主进程启动链，不是 Chromium 沙箱），要验带沙箱的真实配置用
+> `COTTAGE_SMOKE_SANDBOXED=1 pnpm smoke`。
+> 若环境受限导致无法校验，`smoke` 会明确打印"**未能完成校验**"并说明原因，绝不打印
+> "通过"；CI 上要求严格可设 `COTTAGE_SMOKE_STRICT=1`，此时环境受限按失败处理。
 
 > **`pnpm dev` 与 `pnpm build` 是两条独立路径**，构建通过不代表开发能起来。
 > 实测踩过一次：产物名与 `package.json` 的 `main` 不一致时，`pnpm build` 全绿，
