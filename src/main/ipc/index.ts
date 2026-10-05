@@ -10,12 +10,12 @@
  *      而是变成 `{ ok: false, error }`，逼迫 UI 处理失败分支。
  */
 import { dialog, ipcMain } from 'electron';
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { ALL_INVOKE_CHANNELS, EVENT, INVOKE } from '@shared/ipc.js';
 import type { Result } from '@shared/api.js';
 import type { NormalizedError } from '@shared/types.js';
-import { CharacterCardError, parseCharacterCard } from '@core/character-card.js';
+import { CharacterCardError } from '@core/character-card.js';
 import { makeError } from '@core/providers/errors.js';
 import type { AppContext } from '../context.js';
 import { abortConversation, emitEvent } from '../context.js';
@@ -50,6 +50,7 @@ import {
 import { ContextError, buildTokenPreview } from '../services/assemble.js';
 import { beginGeneration } from '../services/generate.js';
 import { compressConversation, previewCompressionRange } from '../services/compress.js';
+import { importCharacterFromFile } from '../services/character-import.js';
 import {
   ExportError,
   conversationStats,
@@ -243,17 +244,15 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
         title: '导入角色卡',
         properties: ['openFile'],
         filters: [
-          { name: '角色卡 JSON', extensions: ['json'] },
+          { name: '角色卡（PNG / JSON）', extensions: ['png', 'json'] },
           { name: '全部文件', extensions: ['*'] },
         ],
       });
       if (picked.canceled || !picked.filePaths.length) return null;
 
-      const filePath = picked.filePaths[0]!;
-      const text = await readFile(filePath, 'utf8');
-      // 先解析验证卡结构再入库：坏文件不该留下半截记录
-      const parsed = parseCharacterCard(text);
-      return charactersDao.importCharacter(db, parsed.rawJson, Date.now());
+      // PNG 卡走 service：解析出 JSON 入库，并把图片存成头像。
+      // 解析失败时异常会在入库之前抛出，所以不会留下半截记录。
+      return importCharacterFromFile(db, ctx.userDataDir, picked.filePaths[0]!, Date.now());
     }),
   );
 

@@ -84,9 +84,10 @@ async function bootstrap(): Promise<void> {
   setAppVersion(app.getVersion());
 
   // ---- 1. 打开数据库（DB 路径只在主进程解析） ----
-  const dbPath = path.join(app.getPath('userData'), 'cottage.db');
+  const userDataDir = app.getPath('userData');
+  const dbPath = path.join(userDataDir, 'cottage.db');
   const db = openBetterSqlite3Driver({ file: dbPath });
-  ctx = createAppContext(db, dbPath);
+  ctx = createAppContext(db, dbPath, userDataDir);
   log.info('数据库已打开', { dbPath });
 
   // ---- 2. 迁移（幂等，重复启动不做事） ----
@@ -106,7 +107,6 @@ async function bootstrap(): Promise<void> {
   // ---- 4.5 头像协议：cottage-avatar:// → userData/avatars/ ----
   // 只放行这一个目录，且由 resolveAvatarRequest 拒绝目录穿越与不在白名单的扩展名。
   // 因此 renderer 拿到的是一个"能显示角色卡图片"的通道，而不是读任意本地文件的能力。
-  const userDataDir = app.getPath('userData');
   protocol.handle(AVATAR_SCHEME, async (request) => {
     const resolved = resolveAvatarRequest(userDataDir, request.url);
     if (!resolved) return new Response(null, { status: 404 });

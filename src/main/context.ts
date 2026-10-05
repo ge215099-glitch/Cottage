@@ -27,10 +27,16 @@ export interface AppContext {
   emit: ((channel: string, payload: unknown) => void) | null;
   /** 数据库文件路径，供诊断页展示 */
   dbPath: string;
+  /** userData 目录：头像等旁挂文件的落点（头像存 `<userData>/avatars/`） */
+  userDataDir: string;
 }
 
-export function createAppContext(db: DatabaseDriver, dbPath: string): AppContext {
-  return { db, streams: new Map(), emit: null, dbPath };
+export function createAppContext(
+  db: DatabaseDriver,
+  dbPath: string,
+  userDataDir: string,
+): AppContext {
+  return { db, streams: new Map(), emit: null, dbPath, userDataDir };
 }
 
 /** 发送事件（窗口未就绪时静默丢弃，不抛异常）。 */
