@@ -433,6 +433,40 @@ interface ProviderAdapter {
 
 模型每秒可产出几十个 chunk，逐帧 `webContents.send` 会把 IPC 变成瓶颈。做法：主进程侧按约 16–32ms 合并增量后批量推送；renderer 侧只做追加与重排。验收项 9 用"推送次数显著小于 chunk 数"来断言这条节流确实生效。
 
+### 7.8 思考型模型（`reasoning_content`）与「空正文」
+
+**实测事故（本节的来源）**：`deepseek-flash` 是混合推理模型，先思考、后正文；
+思考 token 与正文**共用同一个输出额度**（`max_tokens`）。会话上限 1024 时，
+思考把额度吃满 → `content` 为空、`finish_reason=length`、`completion_tokens=1024`
+（其中 `reasoning_tokens=1024`），而上游是以 **200 正常收流**的。
+当时编排层把"没有正文"写成 `done`：消息是一条空白气泡、没有 toast、没有错误条，
+主进程日志里一个字都没有——用户的现象就是"发了消息没有返回"，且无从排查。
+
+三条口径，每条都有对应测试：
+
+1. **思考内容不进正文**。解析器把 `delta.reasoning_content`（Anthropic 侧是
+   `delta.thinking`）产出为独立的 `reasoning` 事件；运行时只累计**长度**
+   （`reasoningChars`）与上游给的**思考 token**（`reasoningTokens`），既不拼进 `text`，
+   也不落库——它一旦进正文，既污染对话，又会被当成下一轮的上下文。
+2. **没有正文就不是成功**。判定与文案收在纯函数 `emptyCompletionError()`
+   （`src/core/providers/errors.ts`），顺序是：有思考痕迹 → 额度被思考吃满、
+   抬高上限或换非思考模型；`content_filter` → 内容过滤；`length` → 触发输出上限；
+   其余 → 空流、允许重试。判定只依赖**计数与结束原因**，不引用上游原始正文。
+3. **证据必须留下来**。消息 metadata 记 `stopReason` / `reasoningTokens` / `error`；
+   每次生成的结局（状态、结束原因、正文与思考长度、token、耗时）都走 `safeLog` 出口。
+   黑框（终端）可以不要，但"为什么没回答"必须留在 `logs/dev.log` 里可查。
+
+两个实现细节容易踩：`finish_reason` 在 OpenAI 兼容协议里是**帧的字段**（`[DONE]` 那一帧
+不带它，上游也可能干脆不发 `[DONE]`），所以收尾时必须从解析器状态兜一次，
+否则 `length` 与 `content_filter` 无从区分；思考 token 只在
+`usage.completion_tokens_details.reasoning_tokens`（Anthropic 为
+`output_tokens_details.thinking_tokens`）里出现，解析时要容忍它缺席。
+
+验证：`test/providers-stream.test.ts`（解析分层）、`test/provider-runtime.test.ts`（只计数、
+不进正文）、`test/providers-errors.test.ts`（判定与文案分支）、
+`test/generate-service.test.ts`（空正文收尾为 `error` 且带证据）；另有
+`test/live-reasoning.test.ts` 打**真实上游**验证这条形态（默认跳过，需要 `COTTAGE_LIVE_KEY`）。
+
 ---
 
 ## 8. Token 计数策略

@@ -211,3 +211,83 @@ describe('Anthropic 流式解析', () => {
     expect(textOf(feed([sse], 'anthropic'))).toBe('靠 type 字段');
   });
 });
+
+/* --------------------- 思考型模型（reasoning_content） --------------------- */
+
+/**
+ * 这一组是实测事故的回归：deepseek-flash 这类思考型模型会在**同一帧**里同时给
+ * `reasoning_content`（思考）与 `content`（正文），而思考 token 与正文共用输出额度。
+ *
+ * 事故形态：会话上限 1024，思考把额度吃满 → `content` 一直是空的、`finish_reason=length`，
+ * 上游仍然以 200 正常收流。当时解析器把思考内容整个丢掉，于是"思考了一千个 token"
+ * 与"上游什么都没回"在应用里长得一模一样。
+ */
+describe('思考型模型：思考内容与正文必须分开', () => {
+  const OPENAI_THINKING_SSE = [
+    'data: {"choices":[{"delta":{"role":"assistant","content":"","reasoning_content":"先想一下"}}]}',
+    '',
+    'data: {"choices":[{"delta":{"reasoning_content":"再想一下"}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"「我在。」"}}]}',
+    '',
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":34,"completion_tokens":127,"completion_tokens_details":{"reasoning_tokens":103}}}',
+    '',
+    'data: [DONE]',
+    '',
+  ].join('\n');
+
+  it('reasoning_content 只产出 reasoning 事件，绝不混进正文', () => {
+    const events = feed([OPENAI_THINKING_SSE], 'openai');
+    expect(textOf(events)).toBe('「我在。」');
+    const reasoning = events
+      .filter((e): e is { type: 'reasoning'; delta: string } => e.type === 'reasoning')
+      .map((e) => e.delta)
+      .join('');
+    expect(reasoning).toBe('先想一下再想一下');
+  });
+
+  it('用量里带出思考 token（正文为空的现场证据）', () => {
+    const events = feed([OPENAI_THINKING_SSE], 'openai');
+    const usage = events.filter((e) => e.type === 'usage').pop();
+    expect(usage).toEqual({
+      type: 'usage',
+      promptTokens: 34,
+      completionTokens: 127,
+      reasoningTokens: 103,
+    });
+  });
+
+  it('只有思考、没有正文时，正文长度就是 0（不是"看起来没回答"）', () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"reasoning_content":"想了很久"}}]}',
+      '',
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":521,"completion_tokens":1024,"completion_tokens_details":{"reasoning_tokens":1024}}}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n');
+    const events = feed([sse], 'openai');
+    expect(textOf(events)).toBe('');
+    expect(events.filter((e) => e.type === 'reasoning')).toHaveLength(1);
+  });
+
+  it('Anthropic 的扩展思考（thinking_delta）同样不进正文', () => {
+    const sse = [
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"先推理"}}',
+      '',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"结论"}}',
+      '',
+      'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":50,"output_tokens_details":{"thinking_tokens":40}},"delta":{"stop_reason":"end_turn"}}',
+      '',
+      'event: message_stop\ndata: {"type":"message_stop"}',
+      '',
+    ].join('\n');
+    const events = feed([sse], 'anthropic');
+    expect(textOf(events)).toBe('结论');
+    expect(
+      events.filter((e) => e.type === 'reasoning').map((e) => (e.type === 'reasoning' ? e.delta : '')),
+    ).toEqual(['先推理']);
+    const usage = events.filter((e) => e.type === 'usage').pop();
+    expect(usage && usage.type === 'usage' ? usage.reasoningTokens : undefined).toBe(40);
+  });
+});

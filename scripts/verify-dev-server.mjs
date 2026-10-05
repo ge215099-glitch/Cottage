@@ -52,6 +52,37 @@ export const REQUIRED_MARKERS = [
 /** 端口是否有进程在监听。逐个试常见地址，避免只探一种而漏判。 */
 export const PROBE_HOSTS = ['127.0.0.1', '::1', 'localhost'];
 
+/**
+ * 起 dev server **之前**的判断：端口已经有人在用了怎么办。
+ *
+ * 为什么要有这一步：这个冒烟脚本靠"自己起的 dev server 在 5173 上提供 renderer 入口"
+ * 来判定通过，但它**无法区分"自己的 server"和"别人的 server"**。实测踩过一次：
+ * 桌面快捷方式启动的 Cottage 正跑着（占着 5173），此时 `pnpm verify:all` 里的
+ * `smoke:dev` 一连上 5173 就判成"就绪"，随即杀掉自己那个还在构建的子进程，
+ * 最后报出的是"没有观察到主进程构建成功的标志"——**与真实原因（端口被占）完全无关**，
+ * 只会让人去翻构建配置。
+ *
+ * 所以：端口被占属于**环境受限**，要明确说出来（照 `smoke` / `smoke:launcher` 的规矩：
+ * 绝不打印"通过"），而不是伪装成一次构建失败。CI 上可设 `COTTAGE_SMOKE_STRICT=1` 按失败处理。
+ */
+export function preflightVerdict({ portBusy, port = DEV_PORT, strict = false } = {}) {
+  if (!portBusy) return null;
+  return {
+    exitCode: strict ? 1 : 0,
+    lines: [
+      `⚠ 开发模式冒烟测试**未能完成校验**：${port} 端口已被占用。`,
+      '  含义：本脚本要靠自己起的 dev server 提供 renderer 入口，而它分不清"自己的"与',
+      '        "别人的"——连上端口就判成就绪，随即杀掉自己的子进程，于是失败信息',
+      '        指向"没有观察到主进程构建成功的标志"这种与真实原因无关的地方。',
+      '  最可能的原因：Cottage 正在运行（桌面快捷方式启动的应用会占着这个端口）。',
+      '  处理：先关掉正在运行的应用，再重跑这个冒烟。',
+      strict
+        ? '  COTTAGE_SMOKE_STRICT=1：按失败处理。'
+        : '  默认按"环境受限"处理（退出 0）；CI 上要求严格请设 COTTAGE_SMOKE_STRICT=1。',
+    ],
+  };
+}
+
 function tryConnect(port, host) {
   return new Promise((resolve) => {
     const socket = net.connect({ port, host });
@@ -109,6 +140,18 @@ async function main() {
   if (!cli) {
     console.error('✗ 找不到 electron-vite 的 CLI。请先执行 pnpm install。');
     process.exit(1);
+  }
+
+  // 端口已被占用就别往下走了：那种情况下本脚本的"就绪"判据会指向别人的 server
+  const already = await waitForDevServer(DEV_PORT, 300);
+  const preflight = preflightVerdict({
+    portBusy: Boolean(already),
+    port: DEV_PORT,
+    strict: process.env['COTTAGE_SMOKE_STRICT'] === '1',
+  });
+  if (preflight) {
+    for (const line of preflight.lines) console.log(line);
+    process.exit(preflight.exitCode);
   }
 
   // 先确认 main 字段所指的产物路径与 pkg.main 一致——这正是踩过的那个坑，

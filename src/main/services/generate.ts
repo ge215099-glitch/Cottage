@@ -19,9 +19,9 @@
  */
 import { buildRequest } from '@core/providers/request.js';
 import { countPromptSpec, exceedsLimit } from '@core/tokens/index.js';
-import { makeError } from '@core/providers/errors.js';
+import { emptyCompletionError, makeError } from '@core/providers/errors.js';
 import { EVENT } from '@shared/ipc.js';
-import type { Message, MessageMetadata, NormalizedError } from '@shared/types.js';
+import type { Message, MessageMetadata, MessageStatus, NormalizedError } from '@shared/types.js';
 import { log } from '../log.js';
 import { decryptSecret, encryptSecret } from '../secrets/index.js';
 import { emitEvent, type AppContext } from '../context.js';
@@ -369,7 +369,27 @@ async function runStream(ctx: AppContext, input: RunStreamInput): Promise<void> 
     persist(true);
     emit(true);
 
-    const status = outcome.status === 'error' ? 'error' : outcome.status;
+    /*
+     * 「上游正常收流但一个字正文都没有」必须按失败处理。
+     *
+     * 实测过一次真事故（deepseek-flash + 会话上限 1024）：思考型模型的思考 token
+     * 与正文共用输出额度，思考吃满 1024 之后 content 是空的、finish_reason=length，
+     * 而上游是以 200 正常收流的。当时这里把 status 直接写成 done，结果是一条空白气泡、
+     * 没有报错、日志里一个字都没有——用户看到的就是"发了消息没有返回"。
+     * 判据与文案在 core 的 emptyCompletionError() 里（纯函数，可单测）。
+     */
+    const emptyCompletion =
+      outcome.status === 'done' && outcome.text.trim() === ''
+        ? emptyCompletionError({
+            ...(outcome.stopReason !== undefined ? { stopReason: outcome.stopReason } : {}),
+            contentChars: outcome.text.length,
+            reasoningChars: outcome.reasoningChars,
+            completionTokens: outcome.completionTokens,
+            reasoningTokens: outcome.reasoningTokens,
+          })
+        : undefined;
+
+    const status: MessageStatus = outcome.status === 'error' || emptyCompletion ? 'error' : outcome.status;
     const metadata: MessageMetadata = {
       providerId: input.providerId,
       model: input.model,
@@ -379,8 +399,37 @@ async function runStream(ctx: AppContext, input: RunStreamInput): Promise<void> 
       tokensExact: input.tokensExact,
     };
     if (outcome.ttftMs !== null) metadata.ttftMs = outcome.ttftMs;
+    if (outcome.reasoningTokens > 0) metadata.reasoningTokens = outcome.reasoningTokens;
+    if (outcome.stopReason !== undefined) metadata.stopReason = outcome.stopReason;
     if (outcome.status === 'interrupted') metadata.interrupted = true;
-    if (outcome.error) metadata.error = outcome.error;
+    const finalError = outcome.error ?? emptyCompletion;
+    if (finalError) metadata.error = finalError;
+
+    /*
+     * 每次生成的结局都要留下可查的痕迹（含被当成失败的"空正文"）。
+     *
+     * 这条日志是"黑框没了"之后的主要诊断入口：只写 UI 不写日志的代价是——
+     * 出问题时 `logs/dev.log` 里只有启动那几行，"为什么没回答"完全查不到。
+     * 载荷里只有计数与结束原因，没有正文内容，也没有 Key。
+     */
+    const outcomeFacts = {
+      status,
+      model: input.model,
+      stopReason: outcome.stopReason ?? null,
+      contentChars: outcome.text.length,
+      reasoningChars: outcome.reasoningChars,
+      completionTokens: outcome.completionTokens,
+      reasoningTokens: outcome.reasoningTokens,
+      elapsedMs: outcome.elapsedMs,
+    };
+    if (status === 'error') {
+      log.error('生成失败', finalError?.message ?? '未知原因');
+    } else if (status === 'interrupted') {
+      log.info('生成被中断（保留已收到内容）', outcomeFacts);
+    } else {
+      log.info('生成完成', outcomeFacts);
+    }
+    if (emptyCompletion) log.warn('上游没有返回正文，按失败处理', outcomeFacts);
 
     finishMessage(ctx.db, input.assistantMessageId, status, metadata, Date.now());
     touchConversation(ctx.db, input.conversationId, Date.now());
@@ -391,7 +440,7 @@ async function runStream(ctx: AppContext, input: RunStreamInput): Promise<void> 
       messageId: input.assistantMessageId,
       status,
       metadata,
-      ...(outcome.error ? { error: outcome.error } : {}),
+      ...(finalError ? { error: finalError } : {}),
     });
     notifyChanged(ctx, input);
   } catch (err) {

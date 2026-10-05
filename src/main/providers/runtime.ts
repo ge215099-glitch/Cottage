@@ -38,8 +38,10 @@ import type { NormalizedError } from '@shared/types.js';
 export interface StreamCallbacks {
   /** 每收到一段文本调用一次（调用方负责节流后再落库/推送） */
   onDelta(delta: string): void;
+  /** 每收到一段**思考内容**调用一次（思考型模型；不是正文，默认不落库） */
+  onReasoning?(delta: string): void;
   /** 收到用量更新（不保证每个上游都给） */
-  onUsage?(usage: { promptTokens: number; completionTokens: number }): void;
+  onUsage?(usage: { promptTokens: number; completionTokens: number; reasoningTokens?: number }): void;
   /** 首 token 延迟（毫秒） */
   onFirstToken?(ttftMs: number): void;
 }
@@ -48,8 +50,17 @@ export interface StreamOutcome {
   status: 'done' | 'interrupted' | 'error';
   /** 累计产出的文本 */
   text: string;
+  /**
+   * 累计的**思考内容长度**（字符，不回传内容本身）。
+   *
+   * 只留长度就够诊断"为什么正文是空的"——把整段思考留在内存里没有用处，
+   * 而且它绝不能进消息内容（那会污染对话与下一轮上下文）。
+   */
+  reasoningChars: number;
   promptTokens: number;
   completionTokens: number;
+  /** 其中用在思考上的输出 token；上游不给时为 0 */
+  reasoningTokens: number;
   ttftMs: number | null;
   elapsedMs: number;
   stopReason?: string;
@@ -100,9 +111,11 @@ export async function streamChat(
 
   const startedAt = now();
   let text = '';
+  let reasoningChars = 0;
   let firstTokenAt: number | null = null;
   let promptTokens = 0;
   let completionTokens = 0;
+  let reasoningTokens = 0;
   let stopReason: string | undefined;
   let retryCount = 0;
 
@@ -115,8 +128,10 @@ export async function streamChat(
     const outcome: StreamOutcome = {
       status,
       text,
+      reasoningChars,
       promptTokens,
       completionTokens,
+      reasoningTokens,
       ttftMs: firstTokenAt === null ? null : firstTokenAt - startedAt,
       elapsedMs,
       retryCount,
@@ -231,12 +246,30 @@ export async function streamChat(
       void reader.cancel().catch(() => undefined);
     }
 
+    /*
+     * `finish_reason` 必须在结局里带上。
+     *
+     * OpenAI 兼容的流把它放在**帧的字段**上（`choices[0].finish_reason`），而 `[DONE]`
+     * 那一帧本身不带它；如果上游干脆不发 `[DONE]`（直接断流，见 flushStream 的分支），
+     * 就更没有"带 stop_reason 的 done 事件"可依赖。所以这里从解析器状态兜一次，
+     * 而不是只信 done 事件的载荷——实测踩过：`stopReason` 一直是 undefined，
+     * 于是"正文为空"时无法区分 `length`（额度用尽）与 `content_filter`（内容过滤）。
+     */
+    if (stopReason === undefined && state.stopReason !== undefined) {
+      stopReason = state.stopReason;
+    }
     return finish('done');
   }
 
   /** 把解析出的事件应用到累计状态；返回错误（若有）。 */
   function applyEvents(events: StreamEvent[]): NormalizedError | undefined {
     for (const event of events) {
+      if (event.type === 'reasoning') {
+        // 思考内容不进正文、不落库：只记长度，供"正文为空"时解释原因
+        reasoningChars += event.delta.length;
+        callbacks.onReasoning?.(event.delta);
+        continue;
+      }
       if (event.type === 'text') {
         if (firstTokenAt === null) {
           firstTokenAt = now();
@@ -249,7 +282,12 @@ export async function streamChat(
       if (event.type === 'usage') {
         if (typeof event.promptTokens === 'number') promptTokens = event.promptTokens;
         if (typeof event.completionTokens === 'number') completionTokens = event.completionTokens;
-        callbacks.onUsage?.({ promptTokens, completionTokens });
+        if (typeof event.reasoningTokens === 'number') reasoningTokens = event.reasoningTokens;
+        callbacks.onUsage?.({
+          promptTokens,
+          completionTokens,
+          ...(reasoningTokens ? { reasoningTokens } : {}),
+        });
         continue;
       }
       if (event.type === 'done') {

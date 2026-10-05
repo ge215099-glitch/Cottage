@@ -350,6 +350,129 @@ describe('失败路径：消息行必须收尾，不能残留「生成中」', (
   });
 });
 
+/**
+ * 实测事故的回归：**上游以 200 正常收流，但一个字正文都没有**。
+ *
+ * 现场（deepseek-flash，会话 max_tokens=1024）：思考型模型的思考 token 与正文共用输出
+ * 额度，思考把 1024 吃满后 `content` 为空、`finish_reason=length`，而流的结束方式与
+ * "正常答完"完全一样。当时编排层直接把它写成 `status=done`，于是：
+ * 消息是一条空白气泡、没有 toast、没有错误条、日志里一个字都没有——
+ * 用户看到的就是"发了消息没有返回"，并且无从排查。
+ *
+ * 这组用例钉住三件事：不许当成功、必须说清原因、必须留下可查的证据。
+ */
+describe('上游正常收流但正文为空（实测事故的回归）', () => {
+  /** 直接给帧的 SSE 响应：用来构造"只有思考、没有正文"这种真实形态。 */
+  function rawSseResponse(frameLines: string[]): Response {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const line of frameLines) controller.enqueue(encoder.encode(line));
+        controller.close();
+      },
+    });
+    return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  }
+
+  function openaiFrame(payload: unknown): string {
+    return `data: ${JSON.stringify(payload)}\n\n`;
+  }
+
+  it('思考吃满输出额度 → 收尾为 error，且说清是思考占的额度', async () => {
+    const providerId = await seedProvider(db);
+    const conversationId = seedConversation(db, providerId);
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    globalThis.fetch = (async () =>
+      rawSseResponse([
+        openaiFrame({ choices: [{ delta: { role: 'assistant', reasoning_content: '一直在想' } }] }),
+        openaiFrame({ choices: [{ delta: { reasoning_content: '还没想完' } }] }),
+        openaiFrame({
+          choices: [{ delta: {}, finish_reason: 'length' }],
+          usage: {
+            prompt_tokens: 521,
+            completion_tokens: 1024,
+            completion_tokens_details: { reasoning_tokens: 1024 },
+          },
+        }),
+        'data: [DONE]\n\n',
+      ])) as unknown as typeof fetch;
+
+    const started = await beginGeneration(ctx, { conversationId, userText: '说话' });
+    await waitFor(() => log.ends.length > 0, 5_000, '流结束事件');
+
+    const stored = messages.getMessage(db, started.assistantMessage.id)!;
+    expect(stored.content).toBe('');
+    // 核心：不许再是 done
+    expect(stored.status).toBe('error');
+    expect(stored.metadata.error?.message).toContain('思考');
+    expect(stored.metadata.error?.message).toContain('上限');
+    // 现场证据必须留下来，否则事后无从判断
+    expect(stored.metadata.stopReason).toBe('length');
+    expect(stored.metadata.reasoningTokens).toBe(1024);
+
+    // UI 侧：streamEnd 必须带 error，否则不会弹 toast、消息上也没有错误条与「重试」
+    const end = log.ends.at(-1)!;
+    expect(end.status).toBe('error');
+    expect(end.error?.message).toContain('思考');
+    expect(end.metadata.error?.message).toContain('思考');
+
+    // 日志侧：黑框没了之后这是唯一的诊断入口，不能一个字都没有
+    const warned = warn.mock.calls.map((call) => String(call[0])).join(' ');
+    expect(warned).toContain('上游没有返回正文');
+    const errored = errorLog.mock.calls.map((call) => String(call[0])).join(' ');
+    expect(errored).toContain('生成失败');
+  });
+
+  it('思考之后有正文 → 仍然是 done（不要误伤正常回答）', async () => {
+    const providerId = await seedProvider(db);
+    const conversationId = seedConversation(db, providerId);
+
+    globalThis.fetch = (async () =>
+      rawSseResponse([
+        openaiFrame({ choices: [{ delta: { reasoning_content: '想一想' } }] }),
+        openaiFrame({ choices: [{ delta: { content: '「我在。」' } }] }),
+        openaiFrame({
+          choices: [{ delta: {}, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 30, completion_tokens: 90, completion_tokens_details: { reasoning_tokens: 60 } },
+        }),
+        'data: [DONE]\n\n',
+      ])) as unknown as typeof fetch;
+
+    const started = await beginGeneration(ctx, { conversationId, userText: '在吗' });
+    await waitFor(() => log.ends.length > 0, 5_000, '流结束事件');
+
+    const stored = messages.getMessage(db, started.assistantMessage.id)!;
+    expect(stored.status).toBe('done');
+    expect(stored.content).toBe('「我在。」');
+    expect(stored.content).not.toContain('想一想');
+    expect(stored.metadata.error).toBeUndefined();
+    expect(stored.metadata.reasoningTokens).toBe(60);
+    expect(stored.metadata.stopReason).toBe('stop');
+  });
+
+  it('空流且没有思考痕迹 → 仍然是 error，文案走"空内容"而不是"思考"', async () => {
+    const providerId = await seedProvider(db);
+    const conversationId = seedConversation(db, providerId);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    globalThis.fetch = (async () =>
+      rawSseResponse([
+        openaiFrame({ choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 0 } }),
+        'data: [DONE]\n\n',
+      ])) as unknown as typeof fetch;
+
+    const started = await beginGeneration(ctx, { conversationId, userText: '在吗' });
+    await waitFor(() => log.ends.length > 0, 5_000, '流结束事件');
+
+    const stored = messages.getMessage(db, started.assistantMessage.id)!;
+    expect(stored.status).toBe('error');
+    expect(stored.metadata.error?.message).toContain('空内容');
+    expect(stored.metadata.error?.message).not.toContain('思考');
+  });
+});
+
 describe('中断（验收项 10 的编排侧）', () => {
   it('abort 后状态为 interrupted，且已收到的部分内容保留', async () => {
     const providerId = await seedProvider(db);

@@ -163,6 +163,10 @@ export interface MessageMetadata {
   model?: string;
   promptTokens?: number;
   completionTokens?: number;
+  /** 其中用在思考上的输出 token（思考型模型；与正文共用输出额度） */
+  reasoningTokens?: number;
+  /** 上游的结束原因（finish_reason / stop_reason）——"正文为空"时它是关键证据 */
+  stopReason?: string;
   /** 首 token 延迟（毫秒） */
   ttftMs?: number;
   /** 总时长（毫秒） */

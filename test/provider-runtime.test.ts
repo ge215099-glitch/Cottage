@@ -335,6 +335,57 @@ describe('失败矩阵（产品设计文档 3.7）', () => {
   });
 });
 
+/**
+ * 思考型模型（实测事故的运行时侧回归）。
+ *
+ * 关键点：思考内容**不能进 `text`**（那是消息正文，会落库、会当下一轮上下文），
+ * 但要如实统计——正文为空时，"思考占了多少"是唯一的解释依据。
+ */
+describe('思考型模型：思考只计数，不进正文', () => {
+  const thinkingFrames = [
+    'data: {"choices":[{"delta":{"role":"assistant","reasoning_content":"想"}}]}',
+    'data: {"choices":[{"delta":{"reasoning_content":"了很久"}}]}',
+    'data: {"choices":[{"delta":{"content":"正文"}}]}',
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":300,"completion_tokens_details":{"reasoning_tokens":280}}}',
+  ];
+
+  it('text 只有正文；思考长度与思考 token 分别统计', async () => {
+    const reasoningDeltas: string[] = [];
+    const outcome = await streamChat(
+      PLAN,
+      { onDelta: () => undefined, onReasoning: (d) => reasoningDeltas.push(d) },
+      options({ fetchImpl: async () => okResponse(sseStream(thinkingFrames)) }),
+    );
+
+    expect(outcome.status).toBe('done');
+    expect(outcome.text).toBe('正文');
+    expect(reasoningDeltas.join('')).toBe('想了很久');
+    expect(outcome.reasoningChars).toBe(4);
+    expect(outcome.reasoningTokens).toBe(280);
+    expect(outcome.stopReason).toBe('stop');
+  });
+
+  it('思考把输出额度吃满时：正文为空，但结局里有可解释的证据', async () => {
+    const frames = [
+      'data: {"choices":[{"delta":{"reasoning_content":"一直想"}}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":521,"completion_tokens":1024,"completion_tokens_details":{"reasoning_tokens":1024}}}',
+    ];
+    const outcome = await streamChat(
+      PLAN,
+      { onDelta: () => undefined },
+      options({ fetchImpl: async () => okResponse(sseStream(frames)) }),
+    );
+
+    // 上游是 200 正常收流，所以运行时**确实**会给出 done —— 判成失败是编排层的责任
+    expect(outcome.status).toBe('done');
+    expect(outcome.text).toBe('');
+    expect(outcome.reasoningChars).toBe(3);
+    expect(outcome.completionTokens).toBe(1024);
+    expect(outcome.reasoningTokens).toBe(1024);
+    expect(outcome.stopReason).toBe('length');
+  });
+});
+
 describe('用户中断（验收项 10）', () => {
   it('abort 后状态为 interrupted，已收到内容保留', async () => {
     const controller = new AbortController();

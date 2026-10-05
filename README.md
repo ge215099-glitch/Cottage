@@ -56,6 +56,16 @@ pnpm launch         # 与 pnpm dev 等价，只是把输出写进 logs/dev.log
 启动器自身的验证见下文 `pnpm smoke:launcher`；它由 `scripts/launch-dev.mjs`（逻辑）、
 `scripts/launch-dev.vbs`（零窗口垫片）、`scripts/create-desktop-shortcut.mjs`（建 .lnk）三部分组成。
 
+> **跑验证前先关掉正在运行的应用**：快捷方式启动的应用会一直占着 5173 端口，
+> 而 `pnpm smoke:dev` 靠这个端口判定"自己的 dev server 起来了"。端口被占时它会明确
+> 打印"**未能完成校验**：5173 已被占用（很可能 Cottage 正在运行）"并让人先关掉应用——
+> 以前这种情况会伪装成"没有观察到主进程构建成功的标志"，把排查引到构建配置上。
+
+另外两点与"后台运行"有关的实际影响：主进程代码改动**不会**自动热重启
+（`electron-vite dev` 不带 `--watch`，热更新只覆盖 renderer），改了 main / preload 要重新
+双击一次快捷方式；同一个仓库里同时跑 `pnpm dev` 与快捷方式启动的应用没有意义，
+启动器会用锁文件挡住第二次启动。
+
 `pnpm install` 之后如果提示原生模块未就绪，执行：
 
 ```bash
@@ -88,6 +98,7 @@ pnpm verify:all     # 上面全部串起来跑一遍
 | 单元 | 纯 Node | core 纯函数（组装幂等、变量替换、token 求和、适配器序列化、SSE 折叠）、PNG 角色卡的读写（合成 PNG 覆盖多文本块/坏 base64/长度写坏/截断/压缩块）、迁移幂等、压缩事务原子性、截断级联失效、`pinned_at` 不改 `updated_at`、密钥边界、CSP 与导航判定、IPC 通道声明与 handler 注册的完整性（静态比对） |
 | 组件 | jsdom + RTL | 侧栏悬停与菜单时序、行内重命名、列表两段分组、搜索过滤、键盘导航、占用条阈值、「约」前缀、角色库卡片网格与详情弹窗、导出格式菜单、无头像断言 |
 | 真卡（live，默认跳过） | 纯 Node | `COTTAGE_REAL_CARD=<路径>` 才跑：真 PNG 卡的解析、「导入 → 导出 PNG → 再导入」闭环、导出的卡面图与源文件逐字节一致 |
+| 真上游（live，默认跳过） | 纯 Node + 真实 API | `COTTAGE_LIVE_KEY=<key>` 才跑：思考型模型（`deepseek-flash` 这类）的思考与正文分开统计；输出上限被思考吃满时正文为空，且被判成"额度被思考吃满"的失败 |
 | 冒烟（开发） | node + Vite | `pnpm dev` 三段构建、dev server 端口、renderer 入口与 HMR 客户端 |
 | 冒烟（生产） | Electron | 主进程启动链路（开库 → 迁移 → 清扫 → 注册 IPC → 建窗口） |
 | 冒烟（启动器） | node + 哑 Electron | 快捷方式那条链路：隐藏启动、输出落进 `logs/dev.log`、就绪判定、重复双击被挡、退出后锁与 dev server 都收干净、失败时留下 `logs/dev-failure.txt` 并退出非 0 |
@@ -115,11 +126,20 @@ pnpm verify:all     # 上面全部串起来跑一遍
 > "通过"；CI 上要求严格可设 `COTTAGE_SMOKE_STRICT=1`，此时环境受限按失败处理。
 > `smoke:launcher` 同理：环境若不允许创建子进程（`spawn EPERM`，esbuild / Vite
 > 起不来），它报告的是"未能完成校验"，而不是把环境问题算成启动器的缺陷。
+> `smoke:dev` 也如此：5173 被占用（最常见的原因就是应用正在运行）时它明确报"未能完成校验"，
+> 而不是伪装成"主进程没构建成功"。
 
 > **`pnpm dev` 与 `pnpm build` 是两条独立路径**，构建通过不代表开发能起来。
 > 实测踩过一次：产物名与 `package.json` 的 `main` 不一致时，`pnpm build` 全绿，
 > 而 `electron-vite dev` 会在启动前校验 `main` 所指文件存在并直接退出。
 > 这也是为什么 `smoke:dev` 单独存在。
+
+> **上游"正常收流但没有正文"一律按失败处理**，并说清原因（思考吃满额度 / 内容过滤 /
+> 触发输出上限 / 空流）。这条曾经是静默的：`deepseek-flash` 这类思考型模型先思考、
+> 后正文，思考 token 与正文共用「上限」，上限被思考吃满时正文为空而上游仍是 200 正常收流；
+> 当时应用把它当成了成功，于是"发消息没反应"既没有报错也没有日志。
+> 口径与文案在 `src/core/providers/errors.ts` 的 `emptyCompletionError()`，
+> 判据与理由见 `docs/tech-stack.md` 7.8。
 
 ### 为什么 DAO 测试不需要原生模块
 

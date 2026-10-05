@@ -55,6 +55,8 @@ export const messageMetadataSchema = z.object({
   model: z.string().optional(),
   promptTokens: z.number().optional(),
   completionTokens: z.number().optional(),
+  reasoningTokens: z.number().optional(),
+  stopReason: z.string().optional(),
   ttftMs: z.number().optional(),
   elapsedMs: z.number().optional(),
   interrupted: z.boolean().optional(),

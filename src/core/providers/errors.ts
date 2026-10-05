@@ -134,3 +134,79 @@ export function makeError(
 ): NormalizedError {
   return { code, message: redactSecrets(message), retryable };
 }
+
+/** 「上游一个字正文都没产出」的现场证据。 */
+export interface EmptyCompletionFacts {
+  /** 上游给的结束原因（finish_reason / stop_reason）；没有则 undefined */
+  stopReason?: string;
+  /** 累计正文长度（字符） */
+  contentChars: number;
+  /** 累计思考内容长度（字符）；上游不给 reasoning_content 时为 0 */
+  reasoningChars: number;
+  /** 输出 token 总数（含思考） */
+  completionTokens: number;
+  /** 其中用在思考上的 token；上游不给时为 0 */
+  reasoningTokens: number;
+}
+
+/**
+ * 上游"正常结束但正文为空"时的错误（产品设计文档 3.7 的失败矩阵）。
+ *
+ * 为什么要有这个函数：**这条路径曾经是静默的**。实测过一次（deepseek-flash，
+ * 会话 max_tokens=1024）：思考型模型的思考 token 同样计入输出额度，思考把 1024
+ * 吃满之后 `content` 是空的、`finish_reason=length`，而上游是以 200 正常收流的。
+ * 应用当时把"没有正文"当成 `done`，于是消息是一条空白气泡、没有报错、日志里也
+ * 一个字都没有——用户的感受就是"发了消息没有返回"，且无从排查。
+ *
+ * 口径：**没有正文就不是成功**。这里按现场证据给出可执行的原因，而不是一句"失败了"：
+ *   1. 有思考痕迹（思考内容或思考 token）→ 额度被思考吃满，抬高上限或换非思考模型；
+ *   2. `content_filter` → 上游内容过滤，改措辞/系统提示；
+ *   3. `length` → 触发了输出上限；
+ *   4. 其余 → 上游返回空流，可以重试。
+ */
+export function emptyCompletionError(facts: EmptyCompletionFacts): NormalizedError {
+  const {
+    stopReason,
+    contentChars,
+    reasoningChars,
+    completionTokens,
+    reasoningTokens,
+  } = facts;
+  const thinkEvidence = reasoningTokens > 0 || reasoningChars > 0;
+  const stop = stopReason ? `finish_reason=${stopReason}` : '上游没有给 finish_reason';
+  const budget = completionTokens > 0 ? `${completionTokens} token` : '未知用量';
+
+  if (thinkEvidence) {
+    const spent = reasoningTokens > 0 ? `${reasoningTokens} token` : `${reasoningChars} 字`;
+    return {
+      code: 'UPSTREAM_ERROR',
+      message:
+        `上游只产出了思考内容，没有正文：${spent} 花在思考上，输出额度共 ${budget}（${stop}）。` +
+        '思考 token 与正文共用同一个「上限」，把右栏「上限」调大（例如 4096）或改用非思考模型后重试。',
+      // 同样的参数重试还是同样的结果，所以不标可重试——要改的是额度
+      retryable: false,
+    };
+  }
+
+  if (stopReason === 'content_filter') {
+    return {
+      code: 'UPSTREAM_ERROR',
+      message: `上游因内容过滤没有返回正文（${stop}）。请调整措辞或系统提示后重试。`,
+      retryable: false,
+    };
+  }
+
+  if (stopReason === 'length') {
+    return {
+      code: 'UPSTREAM_ERROR',
+      message: `上游达到输出上限但没有返回正文（${stop}，共 ${budget}）。请把「上限」调大后重试。`,
+      retryable: false,
+    };
+  }
+
+  return {
+    code: 'UPSTREAM_ERROR',
+    message: `上游返回了空内容（${stop}，正文 ${contentChars} 字）。可以重试，或检查模型名与端点是否匹配。`,
+    retryable: true,
+  };
+}

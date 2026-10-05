@@ -13,7 +13,9 @@ import type { NormalizedError } from '@shared/types.js';
 
 export type StreamEvent =
   | { type: 'text'; delta: string }
-  | { type: 'usage'; promptTokens?: number; completionTokens?: number }
+  /** 思考内容（reasoning_content / thinking）：**不是正文**，单独成事件 */
+  | { type: 'reasoning'; delta: string }
+  | { type: 'usage'; promptTokens?: number; completionTokens?: number; reasoningTokens?: number }
   | { type: 'done'; stopReason?: string }
   | { type: 'error'; error: NormalizedError }
   | { type: 'ignored' };
@@ -26,11 +28,13 @@ export interface StreamState {
   /** 用量累计（Anthropic 在 message_start 给输入、message_delta 给输出） */
   promptTokens: number;
   completionTokens: number;
+  /** 其中用在思考上的输出 token（上游给才有的字段） */
+  reasoningTokens: number;
   stopReason?: string;
 }
 
 export function createStreamState(): StreamState {
-  return { buffer: '', finished: false, promptTokens: 0, completionTokens: 0 };
+  return { buffer: '', finished: false, promptTokens: 0, completionTokens: 0, reasoningTokens: 0 };
 }
 
 interface SseFrame {
@@ -144,6 +148,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *
  * OpenAI 的 SSE 只有 `data:` 行，没有 `event:`；结束标记是 `data: [DONE]`。
  * 上游错误可能出现在流中间，形如 `data: {"error": {...}}`。
+ *
+ * **思考型模型（deepseek-flash / deepseek-reasoner 这类混合推理模型）**会在同一个
+ * delta 里同时给 `reasoning_content`（思考）与 `content`（正文）。思考内容按
+ * `reasoning` 事件单独产出，绝不并进正文——否则思考会落进消息内容，既污染对话，
+ * 又会被当成下一轮的上下文。
  */
 export function parseOpenAiFrame(frame: SseFrame, state: StreamState): StreamEvent[] {
   if (frame.data === '[DONE]') {
@@ -167,7 +176,18 @@ export function parseOpenAiFrame(frame: SseFrame, state: StreamState): StreamEve
     const c = Number(payload.usage.completion_tokens ?? 0);
     state.promptTokens = p || state.promptTokens;
     state.completionTokens = c || state.completionTokens;
-    events.push({ type: 'usage', promptTokens: state.promptTokens, completionTokens: state.completionTokens });
+    // 思考 token 藏在 completion_tokens_details 里；它是"输出额度被谁吃掉了"的关键证据
+    const details = payload.usage.completion_tokens_details;
+    if (isRecord(details)) {
+      const r = Number(details.reasoning_tokens ?? 0);
+      if (r) state.reasoningTokens = r;
+    }
+    events.push({
+      type: 'usage',
+      promptTokens: state.promptTokens,
+      completionTokens: state.completionTokens,
+      ...(state.reasoningTokens ? { reasoningTokens: state.reasoningTokens } : {}),
+    });
   }
 
   const choices = payload.choices;
@@ -175,13 +195,24 @@ export function parseOpenAiFrame(frame: SseFrame, state: StreamState): StreamEve
     for (const choice of choices) {
       if (!isRecord(choice)) continue;
       const delta = choice.delta;
-      if (isRecord(delta) && typeof delta.content === 'string' && delta.content.length > 0) {
-        events.push({ type: 'text', delta: delta.content });
+      if (isRecord(delta)) {
+        // 思考先于正文：同一个 delta 里两者都有时，思考是"更早发生"的那一段
+        if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+          events.push({ type: 'reasoning', delta: delta.reasoning_content });
+        }
+        if (typeof delta.content === 'string' && delta.content.length > 0) {
+          events.push({ type: 'text', delta: delta.content });
+        }
       }
       // 少数端点把完整内容放在 message.content（非流式兜底）
       const message = choice.message;
-      if (isRecord(message) && typeof message.content === 'string' && message.content.length > 0) {
-        events.push({ type: 'text', delta: message.content });
+      if (isRecord(message)) {
+        if (typeof message.reasoning_content === 'string' && message.reasoning_content.length > 0) {
+          events.push({ type: 'reasoning', delta: message.reasoning_content });
+        }
+        if (typeof message.content === 'string' && message.content.length > 0) {
+          events.push({ type: 'text', delta: message.content });
+        }
       }
       if (typeof choice.finish_reason === 'string' && choice.finish_reason) {
         state.stopReason = choice.finish_reason;
@@ -231,6 +262,10 @@ export function parseAnthropicFrame(frame: SseFrame, state: StreamState): Stream
     case 'content_block_delta': {
       const delta = payload.delta;
       if (isRecord(delta)) {
+        // 扩展思考（extended thinking）的文本在 delta.thinking 里，同样是**非正文**
+        if (typeof delta.thinking === 'string' && delta.thinking.length > 0) {
+          return [{ type: 'reasoning', delta: delta.thinking }];
+        }
         if (typeof delta.text === 'string' && delta.text.length > 0) {
           return [{ type: 'text', delta: delta.text }];
         }
@@ -246,7 +281,17 @@ export function parseAnthropicFrame(frame: SseFrame, state: StreamState): Stream
       if (isRecord(payload.usage)) {
         const out = Number(payload.usage.output_tokens ?? 0);
         if (out) state.completionTokens = out;
-        events.push({ type: 'usage', promptTokens: state.promptTokens, completionTokens: state.completionTokens });
+        const details = payload.usage.output_tokens_details;
+        if (isRecord(details)) {
+          const r = Number(details.thinking_tokens ?? 0);
+          if (r) state.reasoningTokens = r;
+        }
+        events.push({
+          type: 'usage',
+          promptTokens: state.promptTokens,
+          completionTokens: state.completionTokens,
+          ...(state.reasoningTokens ? { reasoningTokens: state.reasoningTokens } : {}),
+        });
       }
       const delta = payload.delta;
       if (isRecord(delta) && typeof delta.stop_reason === 'string' && delta.stop_reason) {
