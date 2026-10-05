@@ -237,7 +237,7 @@
 | 方向 | 通道 | 说明 |
 |---|---|---|
 | invoke | `providers:*` | 增删改查、`providers:test`（三态结果 + HTTP 状态 + 原始错误摘要） |
-| invoke | `characters:*` | 导入（v2/v3）、导出、列表、搜索、编辑、头像写入 |
+| invoke | `characters:*` | 导入（v2/v3、JSON 与 PNG 卡）、导出（JSON / PNG 卡，格式由 renderer 指定）、列表、搜索、编辑、头像写入 |
 | invoke | `personas:*` | 增删改查、设为默认 |
 | invoke | `conversations:*` | 列表、创建、重命名、置顶/取消置顶、删除 |
 | invoke | `messages:*` | 列表、发送、编辑、删除、重新生成、中断 |
@@ -314,19 +314,28 @@ DB（相对路径 avatars/lin-wan.png）
 受众是 renderer 的那一半（URL 拼装）放在 `src/shared/avatar-url.ts`，
 因为它不能 import `node:` 模块；解析与校验在 main 侧。
 
-### 6.6 PNG 角色卡的解析位置
+### 6.6 PNG 角色卡的解析与写回位置
 
-PNG 角色卡（SillyTavern 格式）把角色 JSON 放在 PNG 的文本块里，解析这一步**放在 `core`**：
+PNG 角色卡（SillyTavern 格式）把角色 JSON 放在 PNG 的文本块里，**读写两侧都放在 `core`**：
 
 - `src/core/png-card.ts` 只依赖 `Uint8Array` / `DataView` / `TextDecoder` / `atob`，
   **不 import 任何 `node:` 模块**——core 的零平台依赖约束不破，而且能直接在单测里
   用代码合成的 PNG 覆盖各种坏情况（多文本块、坏 base64、长度字段被写坏、截断文件、
   压缩块）。真实卡不在仓库里（近 1MB 的第三方内容），
   改用 `test/real-card.test.ts` 这个**按环境变量启用的 live 测试**，
-  用 `COTTAGE_REAL_CARD=<路径>` 就能对真卡复验一遍。
+  用 `COTTAGE_REAL_CARD=<路径>` 就能对真卡复验一遍（含"导入 → 导出 PNG → 再导入"闭环）。
+- 写回同一个文件里（`embedPngCardPayload`）：**只增删文本块**，卡面图像素与其它块
+  一个字节都不动；**旧的 `chara`/`ccv3` 块会被丢掉**——读侧是按关键词取块的，
+  留着旧块会让"改完导出、再导入又变回去"。写侧的 CRC 必须算对（读侧不用，
+  真卡里就有坏块与重复块），base64 也自己编码而不用 `btoa`：
+  后者要求入参是"每字符 ≤ 0xFF 的字符串"，在大卡上既要注意中间串长度，又多一层环境依赖。
 - 文件 IO、头像落盘与 DAO 组合放在 `src/main/services/character-import.ts`：
   先入库拿到角色 id，再用 id 命名头像文件（用原文件名会有重名覆盖与非法字符两个问题），
   最后把 `avatar_path` 写回。顺序固定，避免"库里有记录但文件没落盘"的半成品状态。
+- 导出侧的取图走 `src/main/services/export.ts`，它**复用头像协议的
+  `resolveAvatarRequest`**（路径必须落在 `<userData>/avatars/` 之内、扩展名在白名单里），
+  而不是自己拼路径——否则会出现"协议读取被严格校验、导出读取却放行"的第二套规则。
+  角色没有卡面图就明确报错并指向 JSON 导出，**不生成占位图冒充卡面**。
 - CSP 与协议那两条纪律见 6.5：读图仍然只能通过 `cottage-avatar://`，
   导入侧没有任何"能读任意文件"的入口。
 
@@ -707,3 +716,4 @@ demo/index.html            交互参考样本，不参与构建
 15. 构建配置不引用 `demo/`；产物中不含 `demo/index.html`。
 16. `renderer` 源码中不出现对 `demo/` 的任何引用（import、路径字符串、资源拷贝）；界面为 React 从零实现，`demo/` 只被人工对照使用。
 17. 三层测试齐备并可运行：`core`/DAO 单元测试、组件测试、Playwright Electron 端到端测试。
+18. 导出 PNG 卡：写出的文件块 CRC 全部正确、**卡面图像素与源文件逐字节一致**、文本块只剩一个（旧的 `chara`/`ccv3` 已被替换），且能被重新导入；角色没有卡面图时明确报错，不产出占位图。

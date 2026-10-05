@@ -171,11 +171,16 @@
 .char-card-figure img {
   width: 100%;
   height: 100%;
+  /*
+   * cover：填满 2:3 的框，允许裁掉一点。
+   * 卡面图比例五花八门（实测一张真卡是 768×1376，比 2:3 更瘦长），
+   * 要"一点都不裁"就得两侧留白，网格会参差不齐；宁可裁一点也要整齐。
+   */
   object-fit: cover;
   display: block;
 }
 
-/* 没有图片的角色卡：灰色色块 + 居中图标，不留空洞也不放默认头像 */
+/* 没有图片的角色卡：纯灰色色块，不留空洞也不放任何图标（图标等于默认头像） */
 .char-card-placeholder {
   display: flex;
   align-items: center;
