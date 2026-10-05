@@ -252,6 +252,18 @@ export function cardTextChunkKeyword(card: Record<string, unknown>): 'ccv3' | 'c
 }
 
 /**
+ * 卡的名字：v2/v3 放在 `data.name`，裸卡放在顶层。
+ *
+ * 别写成只看顶层——那会让所有 v2/v3 卡都拿不到名字，导出时的默认文件名
+ * 永远是兜底的 `character`（实测就是这么发现这个 bug 的：原生保存对话框里
+ * 预填的是 `character.png`，而这张卡明明叫「林晚」）。
+ */
+export function cardDisplayName(card: Record<string, unknown>): string {
+  const data = isRecord(card.data) ? card.data : null;
+  return (data ? readString(data, 'name') : '') || readString(card, 'name');
+}
+
+/**
  * 无损校验：导出的卡是否保留了原卡的全部第三方字段。
  * 用于测试与"导入后立即导出"的自检。
  *

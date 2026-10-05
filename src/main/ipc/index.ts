@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { ALL_INVOKE_CHANNELS, EVENT, INVOKE } from '@shared/ipc.js';
 import type { Result } from '@shared/api.js';
 import type { NormalizedError } from '@shared/types.js';
-import { CharacterCardError } from '@core/character-card.js';
+import { CharacterCardError, cardDisplayName } from '@core/character-card.js';
 import { makeError } from '@core/providers/errors.js';
 import type { AppContext } from '../context.js';
 import { abortConversation, emitEvent } from '../context.js';
@@ -288,10 +288,13 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
       const prepared = await prepareCharacterExport(ctx, id, format);
       const isPng = prepared.bytes !== null;
       const card = prepared.card;
+      // 名字要用 cardDisplayName 取：v2/v3 卡把名字放在 data.name 里，
+      // 只看顶层会让所有正经卡都退化成兜底名「character」
+      const baseName = sanitizeFileName(cardDisplayName(card) || 'character');
 
       const picked = await dialog.showSaveDialog({
         title: isPng ? '导出 PNG 角色卡' : '导出角色卡 JSON',
-        defaultPath: `${sanitizeFileName(String(card['name'] ?? 'character'))}.${isPng ? 'png' : 'json'}`,
+        defaultPath: `${baseName}.${isPng ? 'png' : 'json'}`,
         filters: isPng
           ? [{ name: 'PNG 角色卡（卡面图 + 数据）', extensions: ['png'] }]
           : [{ name: '角色卡 JSON', extensions: ['json'] }],

@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CharacterCardError,
+  cardDisplayName,
   cardTextChunkKeyword,
   exportCharacterCard,
   findLostFields,
@@ -303,5 +304,26 @@ describe('PNG 卡写回用哪个文本块关键词', () => {
   it('未知 spec 也不写 ccv3（读侧 ccv3 优先，写错会让别人解析错版本）', () => {
     expect(cardTextChunkKeyword({ spec: 'chara_card_v4' })).toBe('chara');
     expect(cardTextChunkKeyword({ spec_version: '3.0' })).toBe('chara');
+  });
+});
+
+describe('导出默认文件名用的卡名', () => {
+  it('v2/v3 卡从 data.name 取（只看顶层会退化成兜底名）', () => {
+    expect(cardDisplayName(exportCharacterCard(parseCharacterCard(V3_CARD).rawJson, fields(V3_CARD)))).toBe(
+      '爱丽丝',
+    );
+    expect(cardDisplayName(exportCharacterCard(parseCharacterCard(V2_CARD).rawJson, fields(V2_CARD)))).toBe(
+      '管家',
+    );
+  });
+
+  it('裸卡从顶层取', () => {
+    expect(cardDisplayName(BARE_CARD)).toBe('美嘉');
+  });
+
+  it('没有名字时返回空串，由调用方决定兜底名', () => {
+    expect(cardDisplayName({})).toBe('');
+    expect(cardDisplayName({ data: {} })).toBe('');
+    expect(cardDisplayName({ data: { name: '' }, name: '顶层' })).toBe('顶层');
   });
 });
