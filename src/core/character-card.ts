@@ -241,6 +241,17 @@ export function exportCharacterCard(
 }
 
 /**
+ * PNG 文本块关键词（导出 PNG 卡时用）。
+ *
+ * 只有**明确写着** v3 的卡才写 `ccv3`：读侧是 `ccv3` 优先，如果给一张 v2 卡
+ * 写了 `ccv3`，别人按 v3 去解析会拿不到该有的字段。其余一律 `chara`。
+ */
+export function cardTextChunkKeyword(card: Record<string, unknown>): 'ccv3' | 'chara' {
+  const spec = readString(card, 'spec') || readString(card, 'spec_version');
+  return spec === 'chara_card_v3' ? 'ccv3' : 'chara';
+}
+
+/**
  * 无损校验：导出的卡是否保留了原卡的全部第三方字段。
  * 用于测试与"导入后立即导出"的自检。
  *

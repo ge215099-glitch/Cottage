@@ -11,6 +11,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   PngCardError,
+  crc32,
+  embedPngCardPayload,
+  encodeBase64,
   extractPngCardPayload,
   isPngFile,
 } from '../src/core/png-card.js';
@@ -226,5 +229,157 @@ describe('extractPngCardPayload', () => {
     const parsed = parseCharacterCard(payload.json);
     expect(parsed.name).toBe('林晚·书店');
     expect(parsed.firstMes).toBe('「雨停了。」');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 写回（导出 PNG 卡）                                                 */
+/* ------------------------------------------------------------------ */
+
+/** 拆块（测试侧独立实现，不复用被测代码的解析路径）。 */
+function listChunks(
+  bytes: Uint8Array,
+): Array<{ type: string; keyword: string; text: string; crcOk: boolean; raw: Uint8Array }> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out: Array<{ type: string; keyword: string; text: string; crcOk: boolean; raw: Uint8Array }> = [];
+  let offset = 8;
+  while (offset + 12 <= bytes.length) {
+    const length = view.getUint32(offset);
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    const data = bytes.subarray(offset + 8, offset + 8 + length);
+    const stored = view.getUint32(offset + 8 + length);
+    const body = bytes.subarray(offset + 4, offset + 8 + length);
+    const nul = data.indexOf(0);
+    out.push({
+      type,
+      keyword: nul > 0 ? String.fromCharCode(...data.subarray(0, nul)) : '',
+      text: nul > 0 ? String.fromCharCode(...data.subarray(nul + 1)) : '',
+      crcOk: crc32(body) === stored,
+      raw: bytes.subarray(offset, offset + 12 + length),
+    });
+    offset += 12 + length;
+  }
+  return out;
+}
+
+const EDITED_CARD = {
+  spec: 'chara_card_v2',
+  spec_version: '2.0',
+  data: { name: '林晚（改过）', description: '改过的描述', tags: ['日常'] },
+};
+
+describe('encodeBase64', () => {
+  it('与 btoa 逐字节一致（含 1 / 2 字节余数的补位）', () => {
+    for (const text of ['', 'a', 'ab', 'abc', 'abcd', '「雨」']) {
+      const bytes = new TextEncoder().encode(text);
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      expect(encodeBase64(bytes)).toBe(btoa(binary));
+    }
+  });
+});
+
+describe('embedPngCardPayload', () => {
+  it('写回后能原样读出来（导入 → 导出 → 再导入闭环）', () => {
+    const source = png(IHDR, textChunk('chara', cardBase64(V2_CARD)), IEND);
+    const exported = embedPngCardPayload(source, JSON.stringify(EDITED_CARD));
+
+    const payload = extractPngCardPayload(exported);
+    expect(payload.keyword).toBe('chara');
+    const card = parseCharacterCard(payload.json);
+    expect(card.name).toBe('林晚（改过）');
+    expect(card.description).toBe('改过的描述');
+  });
+
+  it('丢掉旧的 chara 块：否则重新导入会读回旧数据（静默数据丢失）', () => {
+    const source = png(
+      IHDR,
+      textChunk('chara', cardBase64(V2_CARD)),
+      textChunk('chara', cardBase64(V2_CARD)),
+      IEND,
+    );
+    const exported = embedPngCardPayload(source, JSON.stringify(EDITED_CARD));
+
+    const cardChunks = listChunks(exported).filter((c) => c.keyword === 'chara');
+    expect(cardChunks).toHaveLength(1);
+    expect(parseCharacterCard(extractPngCardPayload(exported).json).name).toBe('林晚（改过）');
+  });
+
+  it('旧的 ccv3 块同样被丢掉（v3 优先，留着它会盖掉新写的 v2 数据）', () => {
+    const source = png(IHDR, textChunk('ccv3', cardBase64(V3_CARD)), IEND);
+    const exported = embedPngCardPayload(source, JSON.stringify(EDITED_CARD));
+
+    const chunks = listChunks(exported);
+    expect(chunks.filter((c) => c.keyword === 'ccv3')).toHaveLength(0);
+    expect(chunks.filter((c) => c.keyword === 'chara')).toHaveLength(1);
+    expect(parseCharacterCard(extractPngCardPayload(exported).json).name).toBe('林晚（改过）');
+  });
+
+  it('指定 ccv3 时写 ccv3 关键词', () => {
+    const source = png(IHDR, textChunk('chara', cardBase64(V2_CARD)), IEND);
+    const exported = embedPngCardPayload(source, JSON.stringify(V3_CARD), 'ccv3');
+
+    expect(extractPngCardPayload(exported).keyword).toBe('ccv3');
+    expect(parseCharacterCard(extractPngCardPayload(exported).json).specVersion).toBe('v3');
+  });
+
+  it('图片与其它元数据一个字节都不动（只增删角色卡文本块）', () => {
+    const idat = chunk('IDAT', new Uint8Array([9, 8, 7, 6, 5]));
+    const software = textChunk('Software', 'Cottage 0.1.0');
+    const source = png(IHDR, idat, software, textChunk('chara', cardBase64(V2_CARD)), IEND);
+    const exported = embedPngCardPayload(source, JSON.stringify(EDITED_CARD));
+
+    const before = listChunks(source);
+    const after = listChunks(exported);
+    for (const type of ['IHDR', 'IDAT', 'IEND']) {
+      const a = before.find((c) => c.type === type)!;
+      const b = after.find((c) => c.type === type)!;
+      expect(Array.from(b.raw)).toEqual(Array.from(a.raw));
+    }
+    // 别人的文本块不受影响
+    expect(after.find((c) => c.type === 'tEXt' && c.keyword === 'Software')!.text).toBe('Cottage 0.1.0');
+  });
+
+  it('每个块的 CRC 都算对（读我们这张卡的是别人的程序）', () => {
+    const source = png(IHDR, textChunk('chara', cardBase64(V2_CARD)), IEND);
+    const exported = embedPngCardPayload(source, JSON.stringify(EDITED_CARD));
+    expect(listChunks(exported).every((c) => c.crcOk)).toBe(true);
+  });
+
+  it('新块插在 IEND 之前，IEND 之后的字节原样保留', () => {
+    const trailing = new Uint8Array([1, 2, 3, 4]);
+    const source = new Uint8Array([...png(IHDR, textChunk('chara', cardBase64(V2_CARD)), IEND), ...trailing]);
+    const exported = embedPngCardPayload(source, JSON.stringify(EDITED_CARD));
+
+    const types = listChunks(exported).map((c) => c.type);
+    expect(types.indexOf('tEXt')).toBeLessThan(types.indexOf('IEND'));
+    expect(Array.from(exported.subarray(exported.length - trailing.length))).toEqual([1, 2, 3, 4]);
+  });
+
+  it('非 PNG 与结构不完整的 PNG 都被拒绝，并说清原因', () => {
+    expect(() => embedPngCardPayload(new TextEncoder().encode('{"a":1}'), '{}')).toThrowError(PngCardError);
+    expect(() => embedPngCardPayload(new TextEncoder().encode('{"a":1}'), '{}')).toThrowError(/PNG/);
+
+    const noIend = png(IHDR, textChunk('chara', cardBase64(V2_CARD)));
+    expect(() => embedPngCardPayload(noIend, '{}')).toThrowError(/结构不完整/);
+
+    const truncated = png(IHDR, textChunk('chara', cardBase64(V2_CARD)), IEND).subarray(0, 40);
+    expect(() => embedPngCardPayload(truncated, '{}')).toThrowError(PngCardError);
+  });
+
+  it('中文与 emoji 写回后不乱码', () => {
+    const card = { spec: 'chara_card_v2', data: { name: '林晚·书店', first_mes: '「雨停了。」🌧' } };
+    const source = png(IHDR, IEND);
+    const exported = embedPngCardPayload(source, JSON.stringify(card));
+    const parsed = parseCharacterCard(extractPngCardPayload(exported).json);
+    expect(parsed.name).toBe('林晚·书店');
+    expect(parsed.firstMes).toBe('「雨停了。」🌧');
+  });
+
+  it('原本就是普通图片（没有角色卡文本块）也能写成卡', () => {
+    const plainImage = png(IHDR, chunk('IDAT', new Uint8Array([1, 1, 1])), IEND);
+    expect(() => extractPngCardPayload(plainImage)).toThrowError(/没有角色卡数据/);
+    const exported = embedPngCardPayload(plainImage, JSON.stringify(EDITED_CARD));
+    expect(parseCharacterCard(extractPngCardPayload(exported).json).name).toBe('林晚（改过）');
   });
 });

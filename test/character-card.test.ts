@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CharacterCardError,
+  cardTextChunkKeyword,
   exportCharacterCard,
   findLostFields,
   parseCharacterCard,
@@ -68,6 +69,23 @@ const BARE_CARD = {
   first_mes: '「二比一，别信食谱上写的三比一。」',
   tags: ['日常'],
 };
+
+/** 原卡 → 导出函数的字段入参（等价于 UI 里"编辑后保存"那一步）。 */
+function fields(raw: Record<string, unknown>) {
+  const card = parseCharacterCard(raw);
+  return {
+    name: card.name,
+    description: card.description,
+    personality: card.personality,
+    scenario: card.scenario,
+    firstMes: card.firstMes,
+    alternateGreetings: card.alternateGreetings,
+    mesExample: card.mesExample,
+    systemPrompt: card.systemPrompt,
+    postHistoryInstructions: card.postHistoryInstructions,
+    tags: card.tags,
+  };
+}
 
 describe('角色卡解析', () => {
   it('识别 v3 卡并读出全部 Cottage 管理字段', () => {
@@ -264,5 +282,26 @@ describe('角色卡导出：验收项 1（无损 round-trip）', () => {
     const nested = structuredClone(V3_CARD) as Record<string, unknown>;
     delete (nested.data as Record<string, unknown>).character_book;
     expect(findLostFields(card.rawJson, nested)).toContain('data.character_book');
+  });
+});
+
+describe('PNG 卡写回用哪个文本块关键词', () => {
+  it('v3 卡写 ccv3，v2 卡写 chara', () => {
+    expect(cardTextChunkKeyword(exportCharacterCard(parseCharacterCard(V3_CARD).rawJson, fields(V3_CARD)))).toBe(
+      'ccv3',
+    );
+    expect(cardTextChunkKeyword(exportCharacterCard(parseCharacterCard(V2_CARD).rawJson, fields(V2_CARD)))).toBe(
+      'chara',
+    );
+  });
+
+  it('裸卡（没有 spec）写 chara，不会被误当成 v3', () => {
+    expect(cardTextChunkKeyword(BARE_CARD)).toBe('chara');
+    expect(cardTextChunkKeyword({})).toBe('chara');
+  });
+
+  it('未知 spec 也不写 ccv3（读侧 ccv3 优先，写错会让别人解析错版本）', () => {
+    expect(cardTextChunkKeyword({ spec: 'chara_card_v4' })).toBe('chara');
+    expect(cardTextChunkKeyword({ spec_version: '3.0' })).toBe('chara');
   });
 });
