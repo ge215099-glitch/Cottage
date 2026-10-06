@@ -165,6 +165,45 @@ export function MenuLayer(): JSX.Element | null {
 /* 对话框                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 拨给对话框的全局键处理。
+ *
+ * 抽出来是因为 `ConfirmDialog` 与 `ScrimDialog` 需要**完全一样**的时序：
+ * Esc 关闭并 `preventDefault`（标记这一下已被栈顶消费），Tab 在内部循环。
+ * 两处各写一遍必然会漂移，而漂移的那一处就是"按一下 Esc 关掉两层浮层"。
+ */
+function useDialogKeys(ref: React.RefObject<HTMLElement | null>, onClose: () => void): void {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      // 焦点陷阱：Tab 在对话框内循环，避免焦点跑到背后的界面上
+      if (event.key === 'Tab') {
+        const list = Array.from(
+          ref.current?.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href]',
+          ) ?? [],
+        );
+        if (!list.length) return;
+        const first = list[0]!;
+        const last = list[list.length - 1]!;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [ref, onClose]);
+}
+
 export interface ConfirmDialogProps {
   title: string;
   /** 若干段落；最后一段通常是「此操作不可撤销」这类后果说明 */
@@ -200,33 +239,7 @@ export function ConfirmDialog({
     cancelRef.current?.focus();
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onCancel();
-        return;
-      }
-      // 焦点陷阱：Tab 在对话框内循环，避免焦点跑到背后的界面上
-      if (event.key === 'Tab') {
-        const list = Array.from(
-          dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [],
-        );
-        if (!list.length) return;
-        const first = list[0]!;
-        const last = list[list.length - 1]!;
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onCancel]);
+  useDialogKeys(dialogRef, onCancel);
 
   return (
     <div className="overlay-root">
@@ -256,6 +269,75 @@ export function ConfirmDialog({
               {confirmLabel}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 通用表单对话框外壳                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface ScrimDialogProps {
+  title: string;
+  /** 附加类名，用来调宽度与内部布局（如 `form-dialog`）。 */
+  className?: string;
+  children: ReactNode;
+  /** 底部动作区；通常是「取消 + 主操作」。 */
+  footer?: ReactNode;
+  /** 打开时聚焦哪个元素（表单对话框要落在第一个输入框上）。 */
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
+  onClose(): void;
+}
+
+/**
+ * 带遮罩与焦点陷阱的对话框外壳，供表单类弹窗使用。
+ *
+ * 与 `ConfirmDialog` 共用同一套 `useDialogKeys`，因此"Esc 只关栈顶那一层"
+ * 与"Tab 不逃出对话框"两条行为在两处是同一份实现。
+ *
+ * 容器 `tabIndex={-1}` 且不显示焦点环（`.dialog.form-dialog:focus`）：
+ * 打开时把焦点移进对话框只是为了读屏能落在对话框内，鼠标用户不该看到一圈蓝框。
+ */
+export function ScrimDialog({
+  title,
+  className,
+  children,
+  footer,
+  initialFocusRef,
+  onClose,
+}: ScrimDialogProps): JSX.Element {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const target = initialFocusRef?.current ?? dialogRef.current;
+    target?.focus();
+    // 只在挂载时执行一次：之后的焦点由用户掌控，不该被每次都拽回第一个输入框
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useDialogKeys(dialogRef, onClose);
+
+  return (
+    <div className="overlay-root">
+      <div
+        className="scrim"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) onClose();
+        }}
+      >
+        <div
+          ref={dialogRef}
+          tabIndex={-1}
+          className={className ? `dialog ${className}` : 'dialog'}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+        >
+          <h3>{title}</h3>
+          {children}
+          {footer ? <div className="actions">{footer}</div> : null}
         </div>
       </div>
     </div>

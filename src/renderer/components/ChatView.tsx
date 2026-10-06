@@ -30,7 +30,8 @@ export interface ChatViewProps {
   onTogglePanel(): void;
   onSend(text: string): void;
   onStop(): void;
-  onOpenSettings(): void;
+  /** 未配置可用 Provider 时，提示条上的「去 API Key」跳到这里 */
+  onOpenApiKeys(): void;
   onRestoreSummary(summaryId: string): void;
   onNewConversation(): void;
   onEditMessage(messageId: string, content: string, truncate: boolean): void;
@@ -54,7 +55,7 @@ export function ChatView({
   onTogglePanel,
   onSend,
   onStop,
-  onOpenSettings,
+  onOpenApiKeys,
   onRestoreSummary,
   onNewConversation,
   onEditMessage,
@@ -331,9 +332,9 @@ export function ChatView({
           </div>
           {!hasProvider ? (
             <div className="key-hint">
-              先在设置里配置 Provider
-              <button type="button" onClick={onOpenSettings}>
-                去设置
+              还没有可用的 API Key
+              <button type="button" onClick={onOpenApiKeys}>
+                去 API Key
               </button>
             </div>
           ) : null}

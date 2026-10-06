@@ -394,18 +394,29 @@ describe('侧栏两态与导航（验收项 19 / 24 / 25）', () => {
     expect(useAppStore.getState().sidebarCollapsed).toBe(true);
   });
 
-  it('固定导航只有三项「去别处」的入口，刻意没有「对话」', () => {
-    // 回归锚点：这里以前是四项（含「对话」）。它与正下方的会话列表重复——
+  it('固定导航是五项「去别处」的入口（含用量与 API Key），刻意没有「对话」', () => {
+    // 回归锚点①：这里以前是四项（含「对话」）。它与正下方的会话列表重复——
     // 同一个动作两个入口，用户点会话行还会疑惑"为什么点了不跳转"，
     // 所以「对话」被移除，回到对话靠点会话行或新建一个。
+    // 回归锚点②：Provider 与密钥原本挤在设置页里，现在独立成「API Key」模块，
+    // 用量有独立页面，所以导航从三项变成五项。顺序也钉住：用量在 API Key 之前。
     setup();
     const nav = screen.getByRole('navigation', { name: '主导航' });
     expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual([
       '角色库',
       '人设',
+      '用量',
+      'API Key',
       '设置',
     ]);
     expect(within(nav).queryByRole('button', { name: '对话' })).toBeNull();
+  });
+
+  it('点击「API Key」导航切到该视图', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: 'API Key' }));
+    expect(useAppStore.getState().view).toBe('apiKeys');
   });
 
   it('停在角色库页时，导航高亮角色库（aria-current=page）', () => {

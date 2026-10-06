@@ -1,0 +1,328 @@
+/*
+ * API Key 列表与用量页共用的一套「表格式页面」样式。
+ *
+ * 单独成文件而不是塞进 pages.css：那一份是卡片/表单风格，这一份是表格风格，
+ * 两者的排版假设不同（这里一切以列为单位），混在一起读起来要反复切换脑子。
+ */
+
+/* ---- 页头：标题在左、动作在右（DeepSeek 开放平台那种排法） ---- */
+.page-head-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.page-head-row h1 {
+  margin: 0;
+}
+
+.page-head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-head-actions .btn {
+  height: 32px;
+  width: auto;
+}
+
+/* ---- 表格 ---- */
+.data-table-wrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-list);
+}
+
+.data-table th {
+  text-align: left;
+  font-weight: 550;
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+  background: var(--surface-hover);
+  padding: 9px 12px;
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 11px 12px;
+  border-top: 1px solid var(--border-subtle);
+  vertical-align: top;
+}
+
+.data-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.data-table .col-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.cell-strong {
+  font-weight: 550;
+}
+
+.cell-sub {
+  margin-top: 3px;
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  line-height: 18px;
+  word-break: break-all;
+}
+
+.cell-mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.cell-number {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cell-right {
+  text-align: right;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.row-actions .btn {
+  height: 26px;
+  width: auto;
+  padding: 0 9px;
+  font-size: var(--font-size-meta);
+}
+
+/* 掩码：等宽 + 弱化，读起来就是"这里有一把 Key"，而不是一段可复制的值 */
+.key-mask {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+/* 状态标签 */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+  white-space: nowrap;
+}
+
+.tag.ok {
+  color: var(--text-primary);
+}
+
+/* 表格里的连接测试结果不要撑太宽 */
+.data-table .test-result {
+  margin-top: 6px;
+  padding: 6px 9px;
+}
+
+/* ---- 表单对话框 ---- */
+.dialog.form-dialog {
+  width: 460px;
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 容器 tabindex=-1、不进 Tab 序列，打开时的程序化聚焦不该画出焦点环 */
+.dialog.form-dialog:focus,
+.dialog.form-dialog:focus-visible {
+  outline: none;
+}
+
+.dialog.form-dialog .provider-form {
+  margin: 4px 0 0;
+  overflow-y: auto;
+  padding: 0;
+  background: none;
+}
+
+.dialog.form-dialog .actions {
+  align-items: center;
+}
+
+/* 过滤行：维度 / Key / 清除条件 */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.filter-bar select {
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-app);
+  padding: 0 9px;
+  font-size: 13px;
+  outline: none;
+}
+
+.filter-bar select:focus {
+  border-color: var(--accent-soft);
+}
+
+.filter-bar .clear-filters {
+  color: var(--accent-soft);
+  font-size: var(--font-size-list);
+  text-decoration: underline;
+  padding: 0 4px;
+}
+
+.filter-bar .clear-filters:disabled {
+  color: var(--text-tertiary);
+  text-decoration: none;
+  cursor: default;
+}
+
+/* ---- 指标卡片 ---- */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: 18px;
+}
+
+.metric-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+}
+
+.metric-card .metric-label {
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+}
+
+.metric-card .metric-value {
+  margin-top: 6px;
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  word-break: break-all;
+}
+
+.metric-card .metric-foot {
+  margin-top: 4px;
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+}
+
+/* ---- 柱状图（纯 CSS，不引图表库） ---- */
+.chart-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: 14px 16px 10px;
+  margin-bottom: 18px;
+}
+
+.chart-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.chart-head .chart-title {
+  font-size: var(--font-size-list);
+  font-weight: 550;
+}
+
+.chart-head .chart-note {
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+}
+
+.chart-plot {
+  position: relative;
+  height: 190px;
+  border-bottom: 1px solid var(--border-subtle);
+  /* 柱子的基线：让每根柱都从底部对齐生长 */
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.chart-gridlines {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.chart-gridlines span {
+  border-top: 1px dashed var(--border-subtle);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  line-height: 1;
+  padding-left: 2px;
+}
+
+.chart-bar {
+  flex: 1 1 0;
+  min-width: 3px;
+  background: var(--accent-soft);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: opacity var(--motion-fade);
+}
+
+.chart-bar.empty {
+  background: var(--surface-active);
+}
+
+.chart-axis {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.chart-axis span {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  /* 窄窗口下稀疏轴标签会重叠，干脆只留柱形 */
+  .chart-axis span {
+    visibility: hidden;
+  }
+}

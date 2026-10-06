@@ -4,13 +4,13 @@
  * 为什么是向导而不是一键创建：新建会话要定三件事——**用谁聊（角色）、你是谁（人设）、
  * 用哪个 Key（Provider）**。旧实现是"点一下就建"，于是用哪个角色、哪个 Key 全靠
  * 应用替用户猜（`activeCharacter ?? characters[0]` + 全局默认 Provider），
- * 用户既看不见也改不了，建错了还得进设置里返工。
+ * 用户既看不见也改不了，建错了还得进配置里返工。
  *
  * 交互约定：
  *   - 每一步都必须显式确认，不存在"跳过整步"的暗门；
  *   - 预选值是**可见的**：人设预选全局默认，Provider 预选设置的默认聊天 Provider，
  *     用户只需确认，不需要为了通过而多点几下；
- *   - 每一步缺数据时给出明确的下一步动作（去角色库 / 去人设 / 去设置），
+ *   - 每一步缺数据时给出明确的下一步动作（去角色库 / 去人设 / 去 API Key），
  *     而不是让按钮静默变灰。
  *
  * 从角色卡上的「新对话」进入时用 `initialCharacterId`：角色已经定了，
@@ -42,7 +42,8 @@ export interface NewConversationWizardProps {
   /** 缺数据时跳去对应页面（向导会被关闭） */
   onGoCharacters(): void;
   onGoPersonas(): void;
-  onGoSettings(): void;
+  /** 第 3 步缺 Provider：去 API Key 模块（Provider 与密钥的增删改在那里） */
+  onGoApiKeys(): void;
 }
 
 const STEP_TITLES = ['选择角色', '选择人设', '选择 Key'] as const;
@@ -64,7 +65,7 @@ export function NewConversationWizard({
   onCancel,
   onGoCharacters,
   onGoPersonas,
-  onGoSettings,
+  onGoApiKeys,
 }: NewConversationWizardProps): JSX.Element {
   const presetCharacter = characters.find((c) => c.id === initialCharacterId) ?? null;
   const options = useMemo(() => usableProviders(providers), [providers]);
@@ -193,9 +194,9 @@ export function NewConversationWizard({
                 />
               ) : (
                 <EmptyStep
-                  hint="还没有可用的 Provider。先在设置里配置一个 Key 才能开始对话。"
-                  actionLabel="去设置"
-                  onAction={onGoSettings}
+                  hint="还没有可用的 Provider。先在 API Key 里配置一个 Key 才能开始对话。"
+                  actionLabel="去 API Key"
+                  onAction={onGoApiKeys}
                 />
               )
             ) : null}

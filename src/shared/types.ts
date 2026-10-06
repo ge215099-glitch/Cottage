@@ -22,6 +22,13 @@ export interface Provider {
   compressionModel: string;
   enabled: boolean;
   sortOrder: number;
+  /**
+   * 最近一次用它生成的时间（毫秒）；从未用过为 null。
+   *
+   * 由 `listProviders` 从消息元数据里派生，**不是 providers 表的列**——
+   * 它描述的是"用过没有"，而那是消息的事实，没有第二个真相来源。
+   */
+  lastUsedAt: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -307,6 +314,18 @@ export interface AppDiagnostics {
   appVersion: string;
   electronVersion: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* 用量统计（只读投影：从消息元数据派生，不落新表、不联网）             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 用量页的时间维度。
+ *
+ * `month` / `year` 指**自然月 / 自然年**（本地时区），不是"最近 30 天"；
+ * `week` 是**含今天的最近 7 天**。三者都按本地日切分再聚合。
+ */
+export type UsageRangeKey = 'month' | 'week' | 'year' | 'all';
 
 export interface AppSettings {
   /** 聊天默认 */

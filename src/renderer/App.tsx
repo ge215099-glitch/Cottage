@@ -17,6 +17,8 @@ import type {
   CharacterExportFormat,
   CompressResult,
   NormalizedError,
+  Provider,
+  ProviderTestResult,
   Summary,
   TokenPreview,
 } from '@shared/types.js';
@@ -31,6 +33,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { ChatView } from './components/ChatView.js';
 import { DetailPanel } from './components/DetailPanel.js';
 import { CharactersPage, PersonasPage, SettingsPage } from './components/Pages.js';
+import { ApiKeysPage } from './components/ApiKeysPage.js';
 import { ConfirmDialog, MenuLayer, ToastLayer } from './components/Overlays.js';
 import {
   NewConversationWizard,
@@ -51,6 +54,7 @@ export function App(): JSX.Element {
   /* ------------------------------ store 读取 ------------------------------ */
 
   const view = useAppStore((s) => s.view);
+  const usageFilter = useAppStore((s) => s.usageFilter);
   const setView = useAppStore((s) => s.setView);
   const conversations = useAppStore((s) => s.conversations);
   const characters = useAppStore((s) => s.characters);
@@ -71,6 +75,12 @@ export function App(): JSX.Element {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [compressCandidates, setCompressCandidates] = useState(0);
+  /** API Key 页：正在测试连接的那一条；以及每条最近一次的测试结果 */
+  const [testingProviderId, setTestingProviderId] = useState<string | null>(null);
+  const [providerTestResults, setProviderTestResults] = useState<
+    Record<string, ProviderTestResult>
+  >({});
+
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeConversation = useMemo(
@@ -101,6 +111,11 @@ export function App(): JSX.Element {
   const refreshPersonas = useCallback(async () => {
     const result = await api().personas.list();
     if (result.ok) useAppStore.getState().setPersonas(result.data);
+  }, []);
+
+  const refreshProviders = useCallback(async () => {
+    const result = await api().providers.list();
+    if (result.ok) useAppStore.getState().setProviders(result.data);
   }, []);
 
   const loadMessages = useCallback(async (conversationId: string) => {
@@ -364,6 +379,100 @@ export function App(): JSX.Element {
     [runCharacterExport],
   );
 
+  /* ------------------------------ API Key（导航模块） ------------------------------ */
+
+  /**
+   * 保存一条 API Key 配置。
+   *
+   * **返回错误字符串而不是抛异常**：调用方是弹窗，它要把失败原因就地显示在表单下方
+   * （关掉弹窗会让用户刚填的一屏内容白填）。成功返回 null。
+   */
+  const saveProvider = useCallback(
+    async (input: {
+      id?: string;
+      name: string;
+      type: 'openai' | 'anthropic';
+      baseUrl: string;
+      apiKey?: string;
+      clearKey?: boolean;
+      models: string[];
+      defaultModel: string;
+      compressionModel: string;
+      enabled: boolean;
+    }): Promise<string | null> => {
+      const payload = {
+        name: input.name,
+        type: input.type,
+        baseUrl: input.baseUrl,
+        ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+        models: input.models,
+        defaultModel: input.defaultModel,
+        compressionModel: input.compressionModel || input.defaultModel,
+        enabled: input.enabled,
+      };
+      const result = input.id
+        ? await api().providers.update(input.id, {
+            ...payload,
+            ...(input.clearKey ? { clearKey: true } : {}),
+          })
+        : await api().providers.create(payload);
+      if (!result.ok) return result.error.message;
+      await refreshProviders();
+      // 改了名字/停用之后，旧的测试结果就不再对应当前配置，清掉重测
+      setProviderTestResults((prev) => {
+        const next = { ...prev };
+        delete next[result.data.id];
+        return next;
+      });
+      toast(input.id ? 'API Key 已更新' : 'API Key 已创建');
+      return null;
+    },
+    [refreshProviders],
+  );
+
+  const testProvider = useCallback(async (id: string) => {
+    setTestingProviderId(id);
+    try {
+      const result = await api().providers.test(id);
+      const value: ProviderTestResult = result.ok
+        ? result.data
+        : {
+            outcome: 'unreachable',
+            httpStatus: null,
+            probe: 'chat-completions',
+            message: result.error.message,
+            models: [],
+            storageWarning: null,
+          };
+      setProviderTestResults((prev) => ({ ...prev, [id]: value }));
+    } finally {
+      setTestingProviderId(null);
+    }
+  }, []);
+
+  const requestDeleteProvider = useCallback((provider: Provider) => {
+    setDeleteError(null);
+    setPendingDelete({
+      kind: 'provider',
+      id: provider.id,
+      title: provider.name,
+      paragraphs: [
+        `「${provider.name}」`,
+        '删除后密钥一并丢弃，无法恢复。',
+        '绑定到这条配置的会话会被解除绑定（历史消息保留）。',
+      ],
+    });
+  }, []);
+
+  /** 从 API Key 列表跳到用量页，并只看这一把 Key。 */
+  const selectProviderUsage = useCallback(
+    async (providerId: string) => {
+      useAppStore.getState().setUsageFilter({ providerId });
+      setView('usage');
+    },
+    [setView],
+  );
+
   const requestDeleteConversation = useCallback(
     async (id: string) => {
       const stats = await api().conversations.stats(id);
@@ -427,6 +536,22 @@ export function App(): JSX.Element {
       return;
     }
 
+    if (pendingDelete.kind === 'provider') {
+      const result = await api().providers.delete(pendingDelete.id);
+      if (!result.ok) {
+        setDeleteError(`删除失败：${result.error.message}`);
+        return;
+      }
+      setPendingDelete(null);
+      setProviderTestResults((prev) => {
+        const next = { ...prev };
+        delete next[pendingDelete.id];
+        return next;
+      });
+      await refreshProviders();
+      return;
+    }
+
     const removed = await api().personas.delete(pendingDelete.id);
     if (!removed.ok || !removed.data.ok) {
       setDeleteError(removed.ok ? (removed.data.reason ?? '无法删除') : removed.error.message);
@@ -434,7 +559,7 @@ export function App(): JSX.Element {
     }
     setPendingDelete(null);
     await refreshPersonas();
-  }, [pendingDelete, loadMessages, refreshCharacters, refreshPersonas]);
+  }, [pendingDelete, loadMessages, refreshCharacters, refreshPersonas, refreshProviders]);
 
   /* ------------------------------ 生成 ------------------------------ */
 
@@ -451,7 +576,7 @@ export function App(): JSX.Element {
 
       if (!result.ok) {
         toast(result.error.message, 'error');
-        if (result.error.code === 'NO_PROVIDER' || result.error.code === 'NO_KEY') setView('settings');
+        if (result.error.code === 'NO_PROVIDER' || result.error.code === 'NO_KEY') setView('apiKeys');
         return;
       }
 
@@ -643,7 +768,7 @@ export function App(): JSX.Element {
             onTogglePanel={() => usePanelStore.getState().toggle()}
             onSend={(text) => void sendMessage(text)}
             onStop={() => void stopGeneration()}
-            onOpenSettings={() => setView('settings')}
+            onOpenApiKeys={() => setView('apiKeys')}
             onRestoreSummary={(id) => void restoreSummary(id)}
             onNewConversation={() => openNewConversation()}
             onEditMessage={(messageId, content, truncate) => {
@@ -793,6 +918,32 @@ export function App(): JSX.Element {
               })();
             }}
           />
+        ) : view === 'apiKeys' ? (
+          <ApiKeysPage
+            providers={providers}
+            busyId={testingProviderId}
+            testResults={providerTestResults}
+            onTest={testProvider}
+            onSave={saveProvider}
+            onDelete={requestDeleteProvider}
+            onViewUsage={(provider) =>
+              void selectProviderUsage(provider.id)
+            }
+          />
+        ) : view === 'usage' ? (
+          /*
+           * 用量页还没落地（下一笔改动）。这里刻意渲染一句明确的话，
+           * 而不是让它掉进下面的 else 分支去显示设置页——
+           * 「点了用量却看到设置」是那种会让人怀疑自己点错了的界面。
+           */
+          <div className="page">
+            <div className="page-inner">
+              <h1>用量</h1>
+              <div className="empty-page">
+                用量统计还没接上　筛选条件已经记下来了（{usageFilter.providerId ?? '全部 Key'}）
+              </div>
+            </div>
+          </div>
         ) : (
           <SettingsPage
             providers={providers}
@@ -890,7 +1041,8 @@ export function App(): JSX.Element {
             closeNewConversation();
             setView('personas');
           }}
-          onGoSettings={() => {
+          onGoApiKeys={() => {
+            // 第 3 步缺 Provider：去的是 API Key 模块，不是设置页
             closeNewConversation();
             setView('apiKeys');
           }}

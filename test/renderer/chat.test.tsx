@@ -58,7 +58,7 @@ function setup(
     onTogglePanel: vi.fn(),
     onSend: vi.fn(),
     onStop: vi.fn(),
-    onOpenSettings: vi.fn(),
+    onOpenApiKeys: vi.fn(),
     onRestoreSummary: vi.fn(),
     onNewConversation: vi.fn(),
     onEditMessage: vi.fn(),
@@ -303,16 +303,16 @@ describe('输入区（验收项 13 / 17）', () => {
     expect(props.onStop).toHaveBeenCalled();
   });
 
-  it('未配置 Provider 时发送禁用并给出跳转设置的提示（验收项 17）', async () => {
+  it('未配置 Provider 时发送禁用并给出跳转 API Key 的提示（验收项 17）', async () => {
     const user = userEvent.setup();
     const props = setup({ hasProvider: false });
 
     await user.type(screen.getByRole('textbox', { name: '消息输入' }), '你好');
-    // 提示条出现，说明会引导用户去设置
-    expect(screen.getByText('先在设置里配置 Provider')).toBeTruthy();
+    // 提示条出现，说明会引导用户去配置 Key
+    expect(screen.getByText('还没有可用的 API Key')).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: '去设置' }));
-    expect(props.onOpenSettings).toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '去 API Key' }));
+    expect(props.onOpenApiKeys).toHaveBeenCalled();
   });
 
   it('占用数字常驻，≥75% 转 warn、≥80% 转 danger（阈值文案）', () => {
@@ -330,7 +330,7 @@ describe('输入区（验收项 13 / 17）', () => {
       onTogglePanel: vi.fn(),
       onSend: vi.fn(),
       onStop: vi.fn(),
-      onOpenSettings: vi.fn(),
+      onOpenApiKeys: vi.fn(),
       onRestoreSummary: vi.fn(),
       onNewConversation: vi.fn(),
       onEditMessage: vi.fn(),

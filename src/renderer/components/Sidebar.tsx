@@ -24,12 +24,18 @@ import type { Conversation } from '@shared/types.js';
  *
  * **为什么没有「对话」**：正下方就是会话列表，它本身就是回到对话的入口——
  * 再放一个「对话」导航等于同一个动作有两个入口，用户点列表时还会疑惑
- * "为什么点了没跳转"。所以导航只留三个"去别处"的入口（角色库 / 人设 / 设置），
- * 回到对话靠点会话行或新建一个。
+ * "为什么点了没跳转"。所以导航只留这些"去别处"的入口
+ * （角色库 / 人设 / 用量 / API Key / 设置），回到对话靠点会话行或新建一个。
+ *
+ * 顺序：**先看"花了多少"（用量），再管"钥匙"（API Key）**，最后才是设置。
+ * 两个新模块相邻还有个实际好处——从 Key 列表点「按 API Key 查看用量」
+ * 是往左跳一格，不是跨半屏找。
  */
 const NAV_ITEMS: Array<{ key: ViewKey; label: string; icon: () => JSX.Element }> = [
   { key: 'characters', label: '角色库', icon: Icons.characters },
   { key: 'personas', label: '人设', icon: Icons.personas },
+  { key: 'usage', label: '用量', icon: Icons.usage },
+  { key: 'apiKeys', label: 'API Key', icon: Icons.key },
   { key: 'settings', label: '设置', icon: Icons.settings },
 ];
 

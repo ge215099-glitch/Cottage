@@ -43,6 +43,7 @@ export function makeProvider(overrides: Partial<Provider> = {}): Provider {
     compressionModel: 'deepseek-chat',
     enabled: true,
     sortOrder: 1,
+    lastUsedAt: T0,
     createdAt: T0,
     updatedAt: T0,
     ...overrides,

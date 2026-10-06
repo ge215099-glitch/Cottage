@@ -12,6 +12,7 @@ import type {
   NormalizedError,
   Persona,
   Provider,
+  UsageRangeKey,
 } from '@shared/types.js';
 
 /**
@@ -19,9 +20,17 @@ import type {
  *
  * `chat` 不在导航里：正下方就是会话列表，它本身就是回到对话的入口，
  * 再放一个「对话」等于同一个动作两个入口（见 `Sidebar.tsx` 的说明）。
- * 因此导航只列这些"去别处"的入口。`apiKeys` 是 Provider 与密钥自己的模块。
+ * 因此导航只列这些"去别处"的入口。
  */
-export type ViewKey = 'chat' | 'characters' | 'personas' | 'apiKeys' | 'settings';
+export type ViewKey = 'chat' | 'characters' | 'personas' | 'usage' | 'apiKeys' | 'settings';
+
+/** 用量页的筛选条件；默认"本月 + 全部 Key"。 */
+export interface UsageFilter {
+  range: UsageRangeKey;
+  providerId: string | null;
+}
+
+export const DEFAULT_USAGE_FILTER: UsageFilter = { range: 'month', providerId: null };
 
 export interface AppState {
   view: ViewKey;
@@ -34,6 +43,9 @@ export interface AppState {
   personas: Persona[];
   providers: Provider[];
   settings: AppSettings | null;
+
+  /** 用量页的筛选（跨页面保留，从 API Key 页跳过来时会带上某个 Key） */
+  usageFilter: UsageFilter;
 
   /** 需求：Linux basic_text 时 UI 必须显著警告 */
   storageWarning: string | null;
@@ -53,6 +65,8 @@ export interface AppState {
   setPersonas(list: Persona[]): void;
   setProviders(list: Provider[]): void;
   setSettings(settings: AppSettings): void;
+  setUsageFilter(patch: Partial<UsageFilter>): void;
+  resetUsageFilter(): void;
   setStorageWarning(warning: string | null): void;
   setLastError(error: NormalizedError | null): void;
 }
@@ -66,6 +80,7 @@ export const useAppStore = create<AppState>((set) => ({
   personas: [],
   providers: [],
   settings: null,
+  usageFilter: { ...DEFAULT_USAGE_FILTER },
   storageWarning: null,
   lastError: null,
 
@@ -89,6 +104,8 @@ export const useAppStore = create<AppState>((set) => ({
   setPersonas: (personas) => set({ personas }),
   setProviders: (providers) => set({ providers }),
   setSettings: (settings) => set({ settings }),
+  setUsageFilter: (patch) => set((s) => ({ usageFilter: { ...s.usageFilter, ...patch } })),
+  resetUsageFilter: () => set({ usageFilter: { ...DEFAULT_USAGE_FILTER } }),
   setStorageWarning: (storageWarning) => set({ storageWarning }),
   setLastError: (lastError) => set({ lastError }),
 }));

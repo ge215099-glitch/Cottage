@@ -14,4 +14,5 @@ import './sidebar.css';
 import './chat.css';
 import './panel.css';
 import './pages.css';
+import './tables.css';
 import './overlays.css';

@@ -32,7 +32,7 @@ function setup(overrides: Partial<NewConversationWizardProps> = {}) {
     onCancel: vi.fn(),
     onGoCharacters: vi.fn(),
     onGoPersonas: vi.fn(),
-    onGoSettings: vi.fn(),
+    onGoApiKeys: vi.fn(),
     ...overrides,
   };
   const view = render(<NewConversationWizard {...props} />);
@@ -133,7 +133,7 @@ describe('新建对话向导', () => {
     expect(props.onGoCharacters).toHaveBeenCalled();
   });
 
-  it('没有 Provider 时不能开始对话，并给出「去设置」', async () => {
+  it('没有 Provider 时不能开始对话，并给出「去 API Key」', async () => {
     const user = userEvent.setup();
     const { props } = setup({ providers: [] });
     await user.click(screen.getByRole('radio', { name: /爱丽丝/ }));
@@ -142,8 +142,8 @@ describe('新建对话向导', () => {
 
     expect(screen.getByText(/还没有可用的 Provider/)).toBeTruthy();
     expect((screen.getByRole('button', { name: '开始对话' }) as HTMLButtonElement).disabled).toBe(true);
-    await user.click(screen.getByRole('button', { name: '去设置' }));
-    expect(props.onGoSettings).toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '去 API Key' }));
+    expect(props.onGoApiKeys).toHaveBeenCalled();
   });
 
   it('没有人设时仍可继续（人设是可选的），并给出「去创建人设」', async () => {

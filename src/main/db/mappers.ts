@@ -199,6 +199,12 @@ export function toProvider(row: ProviderRow): Provider {
     compressionModel: row.compression_model,
     enabled: row.enabled === 1,
     sortOrder: row.sort_order,
+    /*
+     * 「最新使用日期」不是 providers 表的列（它属于消息的事实），
+     * 因此这里给一个保守默认值，由 `dao/providers` 在能查到时覆盖掉。
+     * 默认 null 的含义是"没记录"，而不是"没用过"——列表里会显示成「—」。
+     */
+    lastUsedAt: null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
