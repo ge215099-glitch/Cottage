@@ -101,8 +101,14 @@ describe('IPC 通道声明与 handler 注册', () => {
     expect([...declared.values()].filter((c) => c.startsWith('export:'))).toEqual([
       'export:conversation-markdown',
       'export:conversation-json',
-      'export:plain-config',
     ]);
+  });
+
+  it('不存在把明文 Key 写出去的导出通道（明文配置包已整体移除）', () => {
+    // 回归锚点：`export:plain-config` 曾是唯一会写出明文 Key 的出口。
+    // 移除后这条断言防止它被"顺手加回来"——密钥边界必须是只进不出。
+    expect(declared.has('exportPlainConfig')).toBe(false);
+    expect([...declared.values()].some((c) => c.includes('plain'))).toBe(false);
   });
 });
 

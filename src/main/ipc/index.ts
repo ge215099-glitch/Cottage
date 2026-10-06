@@ -57,7 +57,6 @@ import {
   conversationStats,
   exportConversationJson,
   exportConversationMarkdown,
-  exportPlainConfig,
   prepareCharacterExport,
 } from '../services/export.js';
 import { ProviderTestError, fetchModelsFromProvider, testProvider } from '../services/provider-test.js';
@@ -648,24 +647,6 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
     validated(exportConversationSchema, async ({ conversationId }) => {
       const content = exportConversationJson(ctx, conversationId);
       const path = await saveExport(conversationId, content, 'json');
-      return { path, content };
-    }),
-  );
-
-  handlers.set(
-    INVOKE.exportPlainConfig,
-    validated(z.boolean(), async (confirmed) => {
-      const content = await exportPlainConfig(ctx, confirmed);
-      const picked = await dialog.showSaveDialog({
-        title: '导出明文配置包',
-        defaultPath: 'cottage-明文配置.json',
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-      });
-      let path: string | null = null;
-      if (!picked.canceled && picked.filePath) {
-        await writeFile(picked.filePath, content, 'utf8');
-        path = picked.filePath;
-      }
       return { path, content };
     }),
   );

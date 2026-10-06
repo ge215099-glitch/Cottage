@@ -209,9 +209,10 @@ docs/                   产品 / UI / 技术方案
   主进程内存中的一次调用栈内，**不进入 renderer**（IPC 只回 `hasKey` 布尔量）。
 - Linux 上若 `getSelectedStorageBackend()` 返回 `basic_text`，说明本机没有可用密钥环、
   Key **实际未受保护**，设置页会显示显著警告。
-- 导出**默认不含 Key**；只有「导出明文配置包」会带，且必须二次确认。
-  该文件里也写明了：`safeStorage` 的密文绑定本机用户凭据，
-  因此直接拷贝 `cottage.db` 到另一台机器无法解密，换机要用这个文件。
+- **应用里不存在任何写出明文 Key 的出口**：会话导出（Markdown / JSON）与角色卡导出
+  （JSON / PNG）都不含密钥字段。代价是换机不能靠一个文件搬过去——
+  `safeStorage` 的密文绑定本机用户凭据，直接拷贝 `cottage.db` 到另一台机器也解不开，
+  需要在新机器上重新填一次 Key。
 
 ---
 

@@ -90,14 +90,15 @@ describe('迁移机制', () => {
     db.close();
   });
 
-  it('只补差额：停在 001 的库再次迁移只跑 002 与 003', () => {
+  it('只补差额：停在 001 的库再次迁移只跑 002 之后的每一条', () => {
     const db = openRawDb();
     migrate(db, MIGRATIONS.slice(0, 1));
     expect(db.getUserVersion()).toBe(1);
 
     const result = migrate(db);
     expect(result.from).toBe(1);
-    expect(result.applied).toEqual(['002', '003']);
+    // 不写死具体编号：新增迁移时这里不该失败，只该验证"补的是差额"
+    expect(result.applied).toEqual(MIGRATIONS.slice(1).map((m) => m.id));
     db.close();
   });
 
@@ -106,7 +107,8 @@ describe('迁移机制', () => {
     migrate(db);
 
     const broken = {
-      id: '004',
+      // 编号必须接在最后一条之后，否则先撞上"编号与顺序不符"那条断言
+      id: String(MIGRATIONS.length + 1).padStart(3, '0'),
       name: 'broken',
       up(driver: typeof db): void {
         driver.exec('CREATE TABLE half_done (a TEXT);');

@@ -17,7 +17,6 @@ import type {
   CharacterExportFormat,
   CompressResult,
   NormalizedError,
-  ProviderTestResult,
   Summary,
   TokenPreview,
 } from '@shared/types.js';
@@ -40,7 +39,7 @@ import {
 
 /** 待确认的删除操作。 */
 interface PendingDelete {
-  kind: 'conversation' | 'character' | 'persona';
+  kind: 'conversation' | 'character' | 'persona' | 'provider';
   id: string;
   title: string;
   paragraphs: string[];
@@ -72,7 +71,6 @@ export function App(): JSX.Element {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [compressCandidates, setCompressCandidates] = useState(0);
-
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeConversation = useMemo(
@@ -103,11 +101,6 @@ export function App(): JSX.Element {
   const refreshPersonas = useCallback(async () => {
     const result = await api().personas.list();
     if (result.ok) useAppStore.getState().setPersonas(result.data);
-  }, []);
-
-  const refreshProviders = useCallback(async () => {
-    const result = await api().providers.list();
-    if (result.ok) useAppStore.getState().setProviders(result.data);
   }, []);
 
   const loadMessages = useCallback(async (conversationId: string) => {
@@ -806,73 +799,7 @@ export function App(): JSX.Element {
             settings={settings}
             diagnostics={diagnostics}
             storageWarning={storageWarning}
-            onSaveProvider={async (input) => {
-              const result = input.id
-                ? await api().providers.update(input.id, {
-                    name: input.name,
-                    type: input.type,
-                    baseUrl: input.baseUrl,
-                    ...(input.apiKey ? { apiKey: input.apiKey } : {}),
-                    ...(input.clearKey ? { clearKey: input.clearKey } : {}),
-                    models: input.models,
-                    defaultModel: input.defaultModel,
-                    compressionModel: input.compressionModel,
-                    enabled: input.enabled,
-                  })
-                : await api().providers.create({
-                    name: input.name,
-                    type: input.type,
-                    baseUrl: input.baseUrl,
-                    ...(input.apiKey ? { apiKey: input.apiKey } : {}),
-                    models: input.models,
-                    defaultModel: input.defaultModel,
-                    compressionModel: input.compressionModel,
-                    enabled: input.enabled,
-                  });
-              if (!result.ok) {
-                toast(result.error.message, 'error');
-                return;
-              }
-              await refreshProviders();
-              toast(input.id ? 'Provider 已更新' : 'Provider 已添加');
-            }}
-            onDeleteProvider={(id) => {
-              void (async () => {
-                const result = await api().providers.delete(id);
-                if (!result.ok) {
-                  toast(result.error.message, 'error');
-                  return;
-                }
-                await refreshProviders();
-              })();
-            }}
-            onTestProvider={async (id): Promise<ProviderTestResult> => {
-              const result = await api().providers.test(id);
-              if (!result.ok) {
-                return {
-                  outcome: 'unreachable',
-                  httpStatus: null,
-                  probe: 'chat-completions',
-                  message: result.error.message,
-                  models: [],
-                  storageWarning: null,
-                };
-              }
-              return result.data;
-            }}
             onUpdateSettings={(patch) => void updateSettings(patch)}
-            onExportPlainConfig={() => {
-              // 二次确认（技术方案 6.4 规则 5）
-              setPendingDelete({
-                kind: 'conversation',
-                id: '__plain_config__',
-                title: '导出明文配置包？',
-                paragraphs: [
-                  '导出的文件将包含**明文 API Key**，请妥善保管。',
-                  'safeStorage 的密文绑定本机用户凭据，直接拷贝 cottage.db 到另一台机器无法解密；换机请使用本文件。',
-                ],
-              });
-            }}
           />
         )}
 
@@ -965,45 +892,27 @@ export function App(): JSX.Element {
           }}
           onGoSettings={() => {
             closeNewConversation();
-            setView('settings');
+            setView('apiKeys');
           }}
         />
       ) : null}
       {pendingDelete ? (
         <ConfirmDialog
-          title={pendingDelete.kind === 'conversation' && pendingDelete.id === '__plain_config__'
-            ? '导出明文配置包？'
-            : pendingDelete.kind === 'conversation'
+          title={
+            pendingDelete.kind === 'conversation'
               ? '删除对话？'
               : pendingDelete.kind === 'character'
                 ? '删除角色卡？'
-                : '删除人设？'}
-          paragraphs={pendingDelete.paragraphs}
-          confirmLabel={
-            pendingDelete.id === '__plain_config__'
-              ? '确认导出'
-              : pendingDelete.kind === 'conversation'
-                ? '删除'
-                : '删除'
+                : pendingDelete.kind === 'provider'
+                  ? '删除 API Key？'
+                  : '删除人设？'
           }
+          paragraphs={pendingDelete.paragraphs}
+          confirmLabel="删除"
           danger
           error={deleteError}
           onCancel={() => setPendingDelete(null)}
-          onConfirm={() => {
-            if (pendingDelete.id === '__plain_config__') {
-              void (async () => {
-                const result = await api().exportData.plainConfig(true);
-                setPendingDelete(null);
-                if (!result.ok) {
-                  toast(result.error.message, 'error');
-                  return;
-                }
-                toast(result.data.path ? `已导出到 ${result.data.path}` : '已生成明文配置包');
-              })();
-              return;
-            }
-            void confirmDelete();
-          }}
+          onConfirm={() => void confirmDelete()}
         />
       ) : null}
     </>

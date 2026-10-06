@@ -14,8 +14,14 @@ import type {
   Provider,
 } from '@shared/types.js';
 
-/** 四个固定导航项（UI 文档第 3 节：实体只有 4 类，不设二级分组）。 */
-export type ViewKey = 'chat' | 'characters' | 'personas' | 'settings';
+/**
+ * 导航项（UI 文档第 3 节）。
+ *
+ * `chat` 不在导航里：正下方就是会话列表，它本身就是回到对话的入口，
+ * 再放一个「对话」等于同一个动作两个入口（见 `Sidebar.tsx` 的说明）。
+ * 因此导航只列这些"去别处"的入口。`apiKeys` 是 Provider 与密钥自己的模块。
+ */
+export type ViewKey = 'chat' | 'characters' | 'personas' | 'apiKeys' | 'settings';
 
 export interface AppState {
   view: ViewKey;

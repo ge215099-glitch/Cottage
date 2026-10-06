@@ -9,6 +9,8 @@
  *
  * 另外守一条交互决策：「新对话」不再一键建库，而是打开三步向导
  * （选角色 → 选人设 → 选 Key）。
+ *
+ * API Key 模块与用量页的 App 级联动在 `api-keys-app.test.tsx` 里，不混进这份文件。
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';

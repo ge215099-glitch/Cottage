@@ -128,8 +128,6 @@ export interface CottageApi {
   exportData: {
     conversationMarkdown(conversationId: string): Promise<Result<{ path: string | null; content: string }>>;
     conversationJson(conversationId: string): Promise<Result<{ path: string | null; content: string }>>;
-    /** 导出明文配置包：UI 必须先做二次确认（技术方案 6.4 规则 5） */
-    plainConfig(confirmed: boolean): Promise<Result<{ path: string | null; content: string }>>;
   };
   events: {
     onStreamChunk(handler: (event: StreamChunkEvent) => void): Unsubscribe;

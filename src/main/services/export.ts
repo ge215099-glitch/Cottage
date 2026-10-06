@@ -1,32 +1,26 @@
 /**
  * 导出服务（产品设计文档 3.1 / 3.2 / 3.6-⑧）。
  *
- * 三条安全规则在这里落地：
- *   - **默认导出范围不含 Key**。`exportConversation` / `exportCharacter` 都碰不到密钥。
- *   - 只有 `exportPlainConfig` 会带 Key，且必须 `confirmed === true`
- *     （用户显式二次确认），文案里还要说明"密文绑定本机，拷库到另一台机器也解不开"。
+ * 四条安全规则在这里落地：
+ *   - **导出范围永不含 Key**。会话导出、JSON 卡导出、PNG 卡导出全都碰不到密钥。
  *   - 角色卡导出**不新造图片**：PNG 卡用的就是这张卡原来的卡面图，没有就报错，
  *     而不是生成一张灰色占位图冒充卡面。
+ *
+ * 这里曾经有一个 `exportPlainConfig`（把明文 Key 写进"换机配置包"）。它已按需求移除：
+ * 应用里**不存在任何写出明文 Key 的出口**，密钥边界随之收窄到"只进不出"。
  */
 import { readFile } from 'node:fs/promises';
 import { cardTextChunkKeyword } from '@core/character-card.js';
 import { embedPngCardPayload, isPngFile } from '@core/png-card.js';
 import { buildAvatarUrl } from '@shared/avatar-url.js';
 import type { CharacterExportFormat } from '@shared/types.js';
-import { decryptSecret } from '../secrets/index.js';
 import type { AppContext } from '../context.js';
 import { AVATAR_DIR, resolveAvatarRequest } from '../avatars.js';
 import { exportCharacter as exportCharacterCard, getCharacter } from '../db/dao/characters.js';
-import {
-  getConversation,
-  getConversationStats,
-  listConversations,
-} from '../db/dao/conversations.js';
+import { getConversation, getConversationStats } from '../db/dao/conversations.js';
 import { listMessages } from '../db/dao/messages.js';
 import { listSummaries } from '../db/dao/summaries.js';
 import { getDefaultPersona, getPersona } from '../db/dao/personas.js';
-import { getProviderSecretForMain, listProviders } from '../db/dao/providers.js';
-import { readSettings } from '../db/dao/settings.js';
 
 export class ExportError extends Error {
   readonly code: 'NOT_FOUND' | 'NEEDS_CONFIRMATION' | 'DECRYPT_FAILED' | 'NO_AVATAR' | 'BAD_AVATAR';
@@ -187,82 +181,6 @@ export async function prepareCharacterExport(
 ): Promise<{ card: Record<string, unknown>; bytes: Uint8Array | null }> {
   if (format === 'png') return await exportCharacterPng(ctx, characterId);
   return { card: exportCharacter(ctx, characterId), bytes: null };
-}
-
-/**
- * 导出**明文配置包**，用于换机。
- *
- * 必须 `confirmed === true`：这是唯一会把 Key 明文写进文件的出口，
- * 所以强制由 UI 做二次确认（技术方案 6.4 规则 5）。
- *
- * 明文 Key 解出来后**只用于拼这一个 JSON 串**，函数返回后即失去引用。
- */
-export async function exportPlainConfig(
-  ctx: AppContext,
-  confirmed: boolean,
-): Promise<string> {
-  if (!confirmed) {
-    throw new ExportError('NEEDS_CONFIRMATION', '导出明文配置包含 API Key，需要二次确认');
-  }
-
-  const settings = readSettings(ctx.db);
-  const providers = listProviders(ctx.db);
-  const conversations = listConversations(ctx.db);
-
-  const providerEntries = [];
-  for (const provider of providers) {
-    let apiKey: string | null = null;
-    if (provider.hasKey) {
-      const secret = getProviderSecretForMain(ctx.db, provider.id);
-      if (secret?.apiKeyEnc) {
-        try {
-          const { plain } = await decryptSecret(secret.apiKeyEnc);
-          apiKey = plain;
-        } catch {
-          // 解不开就留空，并如实标注，而不是让整个导出失败
-          apiKey = null;
-        }
-      }
-    }
-    providerEntries.push({
-      id: provider.id,
-      name: provider.name,
-      type: provider.type,
-      baseUrl: provider.baseUrl,
-      apiKey,
-      keyDecrypted: apiKey !== null,
-      models: provider.models,
-      defaultModel: provider.defaultModel,
-      compressionModel: provider.compressionModel,
-      enabled: provider.enabled,
-      sortOrder: provider.sortOrder,
-    });
-  }
-
-  const payload = {
-    format: 'cottage.plain-config',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    // 强提示直接写进文件里：用户换机时未必记得这条限制
-    warning: [
-      '本文件包含明文 API Key，请妥善保管，不要提交到版本库或发送给他人。',
-      'safeStorage 的密文绑定本机用户凭据，因此直接拷贝 cottage.db 到另一台机器无法解密；',
-      '换机时请使用本文件，而不是拷贝数据库文件。',
-    ],
-    settings,
-    providers: providerEntries,
-    conversations: conversations.map((c) => ({
-      id: c.id,
-      title: c.title,
-      characterId: c.characterId,
-      personaId: c.personaId,
-      providerId: c.providerId,
-      model: c.model,
-      params: c.params,
-    })),
-  };
-
-  return JSON.stringify(payload, null, 2);
 }
 
 /** 会话统计，供删除确认框展示（UI 文档 4.7）。 */

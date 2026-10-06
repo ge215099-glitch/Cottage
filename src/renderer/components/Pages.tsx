@@ -6,13 +6,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
-import type {
-  AppDiagnostics,
-  Character,
-  Persona,
-  Provider,
-  ProviderTestResult,
-} from '@shared/types.js';
+import type { AppDiagnostics, Character, Persona, Provider } from '@shared/types.js';
 import { buildAvatarUrl } from '@shared/avatar-url.js';
 import { Icons } from './Icons.js';
 import { CharacterDetailDialog } from './CharacterDetailDialog.js';
@@ -439,73 +433,27 @@ export interface SettingsPageProps {
   } | null;
   diagnostics: AppDiagnostics | null;
   storageWarning: string | null;
-  onSaveProvider(input: {
-    id?: string;
-    name: string;
-    type: 'openai' | 'anthropic';
-    baseUrl: string;
-    apiKey?: string;
-    clearKey?: boolean;
-    models: string[];
-    defaultModel: string;
-    compressionModel: string;
-    enabled: boolean;
-  }): Promise<void>;
-  onDeleteProvider(id: string): void;
-  onTestProvider(id: string): Promise<ProviderTestResult>;
   onUpdateSettings(patch: Record<string, unknown>): void;
-  onExportPlainConfig(): void;
 }
 
-const EMPTY_PROVIDER: {
-  name: string;
-  type: 'openai' | 'anthropic';
-  baseUrl: string;
-  apiKey: string;
-  models: string;
-  defaultModel: string;
-  compressionModel: string;
-  enabled: boolean;
-} = {
-  name: '',
-  type: 'openai',
-  baseUrl: '',
-  apiKey: '',
-  models: '',
-  defaultModel: '',
-  compressionModel: '',
-  enabled: true,
-};
-
+/*
+ * 设置页只留"全局默认 / 生成与行为 / 诊断"三段。
+ *
+ * Provider 与密钥的增删改**不在这里**——它有自己的导航模块（`ApiKeysPage`），
+ * 列表 + 弹窗编辑都在那边。设置页保留"聊天默认 Provider / 压缩默认 Provider"
+ * 两个下拉，是因为它们描述的是"默认值"，不是某把 Key 自身的配置。
+ */
 export function SettingsPage({
   providers,
   settings,
   diagnostics,
   storageWarning,
-  onSaveProvider,
-  onDeleteProvider,
-  onTestProvider,
   onUpdateSettings,
-  onExportPlainConfig,
 }: SettingsPageProps): JSX.Element {
-  const [form, setForm] = useState({ ...EMPTY_PROVIDER });
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({});
-  const [testing, setTesting] = useState<string | null>(null);
-
-  const resetForm = (): void => {
-    setForm({ ...EMPTY_PROVIDER });
-    setEditingId(null);
-  };
-
   return (
     <div className="page">
       <div className="page-inner">
         <h1>设置</h1>
-        <p className="lede">
-          本地优先（BYOK）：API Key 用系统密钥环加密后存在本机，
-          应用不代理、不上传、不收费。
-        </p>
 
         {/* Linux basic_text 降级警告必须显著（产品设计文档 3.1） */}
         {storageWarning ? (
@@ -514,210 +462,6 @@ export function SettingsPage({
             {storageWarning}
           </div>
         ) : null}
-
-        <section className="settings-section">
-          <h2>Provider 与密钥</h2>
-          <p className="hint">
-            密钥只以密文落库（字段 <code>api_key_enc</code>），明文只在主进程内存中出现一次；
-            界面与日志都不会出现明文。
-          </p>
-
-          {providers.map((provider) => {
-            const result = testResults[provider.id];
-            return (
-              <div key={provider.id} className="setting-row" style={{ alignItems: 'flex-start' }}>
-                <div className="label">
-                  <b>
-                    {provider.name}{' '}
-                    <span className="sub">
-                      {provider.type === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}
-                      {provider.enabled ? '' : ' · 已停用'}
-                    </span>
-                  </b>
-                  <small>{provider.baseUrl}</small>
-                  <small>
-                    <span className={provider.hasKey ? 'key-status ok' : 'key-status warn'}>
-                      {provider.hasKey ? '已配置 Key' : '未配置 Key'}
-                    </span>
-                    {provider.defaultModel ? ` · 默认模型 ${provider.defaultModel}` : ''}
-                  </small>
-                  {result ? (
-                    <div
-                      className={
-                        result.outcome === 'ok'
-                          ? 'test-result ok'
-                          : result.outcome === 'auth-failed'
-                            ? 'test-result warn'
-                            : 'test-result fail'
-                      }
-                      style={{ marginTop: 8 }}
-                    >
-                      {result.outcome === 'ok'
-                        ? '可达，鉴权通过'
-                        : result.outcome === 'auth-failed'
-                          ? '可达，鉴权失败'
-                          : '不可达'}
-                      {result.httpStatus ? `（HTTP ${result.httpStatus}）` : ''}
-                      {' · '}
-                      {result.message}
-                      {result.models.length ? ` · 发现 ${result.models.length} 个模型` : ''}
-                    </div>
-                  ) : null}
-                </div>
-                <div className="form-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={!provider.hasKey || testing === provider.id}
-                    onClick={async () => {
-                      setTesting(provider.id);
-                      try {
-                        const result = await onTestProvider(provider.id);
-                        setTestResults((prev) => ({ ...prev, [provider.id]: result }));
-                      } finally {
-                        setTesting(null);
-                      }
-                    }}
-                  >
-                    {testing === provider.id ? '测试中…' : '测试连接'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      setEditingId(provider.id);
-                      setForm({
-                        name: provider.name,
-                        type: provider.type,
-                        baseUrl: provider.baseUrl,
-                        apiKey: '',
-                        models: provider.models.join(', '),
-                        defaultModel: provider.defaultModel,
-                        compressionModel: provider.compressionModel,
-                        enabled: provider.enabled,
-                      });
-                    }}
-                  >
-                    编辑
-                  </button>
-                  <button type="button" className="btn danger" onClick={() => onDeleteProvider(provider.id)}>
-                    删除
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-
-          <div className="provider-form" style={{ marginTop: 16 }}>
-            <div className="field">
-              <label htmlFor="p-name">名称</label>
-              <input
-                id="p-name"
-                type="text"
-                value={form.name}
-                placeholder="例如：本地 DeepSeek"
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="p-type">类型</label>
-              <select
-                id="p-type"
-                value={form.type}
-                onChange={(event) =>
-                  setForm({ ...form, type: event.target.value as 'openai' | 'anthropic' })
-                }
-              >
-                <option value="openai">OpenAI 兼容</option>
-                <option value="anthropic">Anthropic</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="p-url">base_url</label>
-              <input
-                id="p-url"
-                type="text"
-                value={form.baseUrl}
-                placeholder="https://api.example.com/v1"
-                onChange={(event) => setForm({ ...form, baseUrl: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="p-key">
-                API Key{editingId ? '（留空表示不修改已保存的 Key）' : ''}
-              </label>
-              <input
-                id="p-key"
-                type="password"
-                value={form.apiKey}
-                autoComplete="off"
-                onChange={(event) => setForm({ ...form, apiKey: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="p-models">模型列表（逗号分隔）</label>
-              <input
-                id="p-models"
-                type="text"
-                value={form.models}
-                placeholder="deepseek-chat, deepseek-reasoner"
-                onChange={(event) => setForm({ ...form, models: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="p-default">默认模型 / 压缩模型</label>
-              <input
-                id="p-default"
-                type="text"
-                value={form.defaultModel}
-                placeholder="deepseek-chat"
-                onChange={(event) =>
-                  setForm({ ...form, defaultModel: event.target.value, compressionModel: event.target.value })
-                }
-              />
-            </div>
-            <div className="form-actions">
-              <button
-                type="button"
-                className="btn primary"
-                style={{ width: 'auto' }}
-                disabled={!form.name.trim() || !form.baseUrl.trim()}
-                onClick={async () => {
-                  await onSaveProvider({
-                    ...(editingId ? { id: editingId } : {}),
-                    name: form.name.trim(),
-                    type: form.type,
-                    baseUrl: form.baseUrl.trim(),
-                    ...(form.apiKey ? { apiKey: form.apiKey } : {}),
-                    models: form.models
-                      .split(/[,，]/)
-                      .map((m) => m.trim())
-                      .filter(Boolean),
-                    defaultModel: form.defaultModel.trim(),
-                    compressionModel: form.compressionModel.trim() || form.defaultModel.trim(),
-                    enabled: form.enabled,
-                  });
-                  resetForm();
-                }}
-              >
-                {editingId ? '保存修改' : '添加 Provider'}
-              </button>
-              {editingId ? (
-                <button type="button" className="btn" onClick={resetForm}>
-                  取消
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <button type="button" className="btn danger" style={{ marginTop: 12 }} onClick={onExportPlainConfig}>
-            导出明文配置包（用于换机）
-          </button>
-          <div className="hint" style={{ marginTop: 6 }}>
-            明文导出会包含 API Key，需要二次确认。注意：safeStorage 的密文绑定本机用户凭据，
-            因此直接拷贝 cottage.db 到另一台机器无法解密——换机请用这个文件。
-          </div>
-        </section>
 
         <section className="settings-section">
           <h2>全局默认</h2>

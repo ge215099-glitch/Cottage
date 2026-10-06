@@ -158,8 +158,6 @@ const api: CottageApi = {
       ),
     conversationJson: (conversationId) =>
       invoke<{ path: string | null; content: string }>(INVOKE.exportConversationJson, conversationId),
-    plainConfig: (confirmed) =>
-      invoke<{ path: string | null; content: string }>(INVOKE.exportPlainConfig, confirmed),
   },
   events: {
     onStreamChunk: (handler) => subscribe<StreamChunkEvent>(EVENT.streamChunk, handler),
