@@ -12,6 +12,7 @@ import type { DatabaseDriver } from '../driver.js';
 import * as m001 from './001-initial-schema.js';
 import * as m002 from './002-conversation-pinned-at.js';
 import * as m003 from './003-message-status.js';
+import * as m004 from './004-message-role-index.js';
 
 export interface Migration {
   id: string;
@@ -20,7 +21,7 @@ export interface Migration {
 }
 
 /** 迁移清单。**只允许追加，禁止修改已发布的条目。** */
-export const MIGRATIONS: Migration[] = [m001, m002, m003];
+export const MIGRATIONS: Migration[] = [m001, m002, m003, m004];
 
 export const LATEST_VERSION = MIGRATIONS.length;
 

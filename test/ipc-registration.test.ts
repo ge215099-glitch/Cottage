@@ -17,7 +17,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ALL_INVOKE_CHANNELS, INVOKE } from '../src/shared/ipc.js';
-import { listCharactersInputSchema } from '../src/shared/schemas.js';
+import { listCharactersInputSchema, usageSummaryInputSchema } from '../src/shared/schemas.js';
 
 // vitest 以项目根为 cwd 运行；两个文件都必须读到，读不到要立刻炸（否则断言会空转假绿）
 const repoRoot = process.cwd();
@@ -141,14 +141,28 @@ describe('IPC 可选入参的空值约定', () => {
 
   it('preload 每次用 `?? null` 发可选参数，主进程那侧都必须有对应 handler', () => {
     // 把所有这类通道列出来，避免"新增了一个 ?? null 但主进程没接"再次发生。
-    // 目前有两处：characters.list（曾出问题）与 conversations.restart（一直用 .nullable()）。
+    // 目前有三处：characters.list（曾出问题）、conversations.restart（一直用 .nullable()），
+    // 以及 usage.summary（不筛选 Key 时发 null）。
     const nullishKeys = [...preloadSource.matchAll(/INVOKE\.([A-Za-z0-9_]+),\s*[^)]*?\?\?\s*null/g)]
       .map((m) => m[1]!);
-    expect(nullishKeys.sort()).toEqual(['charactersList', 'conversationsRestart']);
+    expect(nullishKeys.sort()).toEqual(['charactersList', 'conversationsRestart', 'usageSummary']);
     for (const key of nullishKeys) {
       expect(registered.has(key), `preload 用 ?? null 发送 INVOKE.${key}，主进程却没有 handler`).toBe(
         true,
       );
     }
+  });
+
+  it('用量入参与 characters.list 同一条纪律：null / undefined / {} 都表示"不筛选"', () => {
+    // 回归锚点：只写 .optional() 时 `usage.summary()` 必定校验失败，用量页整页空白，
+    // 而页面本身看起来完全正常——与当年角色库"永远没有角色卡"是同一类坑。
+    expect(usageSummaryInputSchema.safeParse(null).success).toBe(true);
+    expect(usageSummaryInputSchema.safeParse(undefined).success).toBe(true);
+    expect(usageSummaryInputSchema.safeParse({}).success).toBe(true);
+    expect(usageSummaryInputSchema.safeParse({ range: 'week', providerId: 'prv_1' }).success).toBe(
+      true,
+    );
+    expect(usageSummaryInputSchema.safeParse({ range: '昨天' }).success).toBe(false);
+    expect(usageSummaryInputSchema.safeParse({ providerId: 42 }).success).toBe(false);
   });
 });

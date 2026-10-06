@@ -17,6 +17,7 @@ import type {
   Provider,
   Summary,
   TokenPreview,
+  UsageSummary,
 } from '../../src/shared/types.js';
 
 export const T0 = 1_700_000_000_000;
@@ -152,6 +153,35 @@ export function makeTokenPreview(overrides: Partial<TokenPreview> = {}): TokenPr
   };
 }
 
+export function makeUsageSummary(overrides: Partial<UsageSummary> = {}): UsageSummary {
+  const daily = Array.from({ length: 5 }, (_, index) => ({
+    day: `2026-10-0${index + 1}`,
+    requests: index + 1,
+    promptTokens: 1000 * (index + 1),
+    completionTokens: 500 * (index + 1),
+    tokens: 1500 * (index + 1),
+  }));
+  const tokens = daily.reduce((sum, point) => sum + point.tokens, 0);
+  const requests = daily.reduce((sum, point) => sum + point.requests, 0);
+  return {
+    range: 'month',
+    providerId: null,
+    from: new Date(2026, 9, 1).getTime(),
+    to: new Date(2026, 9, 5, 12).getTime(),
+    daily,
+    activeDays: daily.length,
+    models: [{ model: 'deepseek-chat', requests, promptTokens: 0, completionTokens: 0, tokens }],
+    requests,
+    failedRequests: 0,
+    promptTokens: daily.reduce((sum, point) => sum + point.promptTokens, 0),
+    completionTokens: daily.reduce((sum, point) => sum + point.completionTokens, 0),
+    tokens,
+    reasoningRequests: 0,
+    anyEstimated: false,
+    ...overrides,
+  };
+}
+
 export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     chatProviderId: 'prv_1',
@@ -189,6 +219,7 @@ export interface FakeApiOptions {
   messages?: Message[];
   summaries?: Summary[];
   preview?: TokenPreview;
+  usage?: UsageSummary;
   settings?: AppSettings;
   diagnostics?: AppDiagnostics;
   /** 覆盖任意方法：`{ 'messages.send': async () => fail('x') }` */
@@ -300,6 +331,9 @@ export function installFakeApi(options: FakeApiOptions = {}): {
     },
     tokens: {
       preview: method('tokens.preview', async () => ok(options.preview ?? makeTokenPreview())),
+    },
+    usage: {
+      summary: method('usage.summary', async () => ok(options.usage ?? makeUsageSummary())),
     },
     settings: {
       get: method('settings.get', async () => ok(options.settings ?? makeSettings())),

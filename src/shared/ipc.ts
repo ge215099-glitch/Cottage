@@ -64,6 +64,9 @@ export const INVOKE = {
   /* Token 预览（只读投影，不落库不联网） */
   tokensPreview: 'tokens:preview',
 
+  /* 用量统计（只读投影，从消息元数据派生） */
+  usageSummary: 'usage:summary',
+
   /* 设置与诊断 */
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',

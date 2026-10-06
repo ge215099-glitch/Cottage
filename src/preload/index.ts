@@ -29,6 +29,7 @@ import type {
   StreamEndEvent,
   Summary,
   TokenPreview,
+  UsageSummary,
 } from '@shared/types.js';
 import type {
   CharacterUpdatePayload,
@@ -42,6 +43,7 @@ import type {
   SendMessagePayload,
   SettingsPatchPayload,
   TokensPreviewPayload,
+  UsageSummaryPayload,
 } from '@shared/schemas.js';
 
 /** 统一 invoke 包装：把主进程的 Result 原样带回。 */
@@ -142,6 +144,11 @@ const api: CottageApi = {
   },
   tokens: {
     preview: (input: TokensPreviewPayload) => invoke<TokenPreview>(INVOKE.tokensPreview, input),
+  },
+  usage: {
+    // 不筛选时发 `null`（不是 undefined）：与 characters.list 同理，
+    // 主进程那侧的 schema 用 `.nullish()` 接住
+    summary: (input?: UsageSummaryPayload) => invoke<UsageSummary>(INVOKE.usageSummary, input ?? null),
   },
   settings: {
     get: () => invoke<AppSettings>(INVOKE.settingsGet),

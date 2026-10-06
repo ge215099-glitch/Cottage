@@ -184,6 +184,21 @@ describe('迁移机制', () => {
     ).toThrow();
     db.close();
   });
+
+  it('004 为 messages.role 建索引（用量统计按 role 过滤）', () => {
+    const db = openMigrated();
+    expect(indexNames(db, 'messages')).toContain('idx_messages_role');
+    // 索引真的被查询计划用上，而不是"建了但没人走"
+    const plan = db
+      .prepare<{ detail: string }>(
+        "EXPLAIN QUERY PLAN SELECT id FROM messages WHERE role = 'assistant'",
+      )
+      .all()
+      .map((row) => row.detail)
+      .join(' ');
+    expect(plan).toContain('idx_messages_role');
+    db.close();
+  });
 });
 
 /** 便捷：打开已迁移库。 */

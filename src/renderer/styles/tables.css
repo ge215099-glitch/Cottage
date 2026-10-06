@@ -204,6 +204,28 @@
   cursor: default;
 }
 
+/*
+ * 页面级错误条（用量读取失败等）。
+ *
+ * 刻意不复用 `.storage-warning`：那条是"密钥保护已降级"的**安全警告**，
+ * 用的是 warn 色。读取失败是普通错误，颜色与语义都不同，
+ * 借用的后果是用户分不清"哪里坏了"和"哪里不安全"。
+ */
+.page-error {
+  margin: 0 0 16px;
+  padding: 11px 13px;
+  border-radius: var(--radius-card);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  color: var(--text-primary);
+  font-size: var(--font-size-meta);
+  line-height: 20px;
+}
+
+.page-error b {
+  color: var(--danger);
+}
+
 /* ---- 指标卡片 ---- */
 .metric-grid {
   display: grid;
@@ -294,7 +316,11 @@
 .chart-bar {
   flex: 1 1 0;
   min-width: 3px;
-  background: var(--accent-soft);
+  /*
+   * 与右栏 token 明细里的"历史"段同一个色（--seg-history）：两处都在表达
+   * "历史 token 的量"，同色能让用户把两张图联系起来，而不是当成两套无关的图表。
+   */
+  background: var(--seg-history);
   border-radius: 3px 3px 0 0;
   min-height: 2px;
   transition: opacity var(--motion-fade);

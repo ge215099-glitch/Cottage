@@ -28,6 +28,7 @@ import type {
   StreamEndEvent,
   Summary,
   TokenPreview,
+  UsageSummary,
 } from './types.js';
 import type {
   CharacterUpdatePayload,
@@ -41,6 +42,7 @@ import type {
   SendMessagePayload,
   SettingsPatchPayload,
   TokensPreviewPayload,
+  UsageSummaryPayload,
 } from './schemas.js';
 
 /** 统一返回：成功带数据，失败带已脱敏的 NormalizedError。 */
@@ -117,6 +119,16 @@ export interface CottageApi {
   tokens: {
     /** 只读投影：主进程算完再给 renderer，renderer 不得自行计数作为权威值 */
     preview(input: TokensPreviewPayload): Promise<Result<TokenPreview>>;
+  };
+  usage: {
+    /**
+     * 用量统计（只读投影）。
+     *
+     * 数据源是每条 assistant 消息的 `metadata_json`，**不联网、不落新表**：
+     * 所以它反映的是"本机用这个应用发过多少请求"，与账号后台的账单口径
+     * （含其它客户端、赠金抵扣、缓存命中折扣）本来就不会完全一致。
+     */
+    summary(input?: UsageSummaryPayload): Promise<Result<UsageSummary>>;
   };
   settings: {
     get(): Promise<Result<AppSettings>>;

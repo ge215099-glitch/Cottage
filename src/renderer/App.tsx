@@ -34,6 +34,7 @@ import { ChatView } from './components/ChatView.js';
 import { DetailPanel } from './components/DetailPanel.js';
 import { CharactersPage, PersonasPage, SettingsPage } from './components/Pages.js';
 import { ApiKeysPage } from './components/ApiKeysPage.js';
+import { UsagePage } from './components/UsagePage.js';
 import { ConfirmDialog, MenuLayer, ToastLayer } from './components/Overlays.js';
 import {
   NewConversationWizard,
@@ -54,7 +55,6 @@ export function App(): JSX.Element {
   /* ------------------------------ store 读取 ------------------------------ */
 
   const view = useAppStore((s) => s.view);
-  const usageFilter = useAppStore((s) => s.usageFilter);
   const setView = useAppStore((s) => s.setView);
   const conversations = useAppStore((s) => s.conversations);
   const characters = useAppStore((s) => s.characters);
@@ -918,6 +918,8 @@ export function App(): JSX.Element {
               })();
             }}
           />
+        ) : view === 'usage' ? (
+          <UsagePage providers={providers} />
         ) : view === 'apiKeys' ? (
           <ApiKeysPage
             providers={providers}
@@ -930,20 +932,6 @@ export function App(): JSX.Element {
               void selectProviderUsage(provider.id)
             }
           />
-        ) : view === 'usage' ? (
-          /*
-           * 用量页还没落地（下一笔改动）。这里刻意渲染一句明确的话，
-           * 而不是让它掉进下面的 else 分支去显示设置页——
-           * 「点了用量却看到设置」是那种会让人怀疑自己点错了的界面。
-           */
-          <div className="page">
-            <div className="page-inner">
-              <h1>用量</h1>
-              <div className="empty-page">
-                用量统计还没接上　筛选条件已经记下来了（{usageFilter.providerId ?? '全部 Key'}）
-              </div>
-            </div>
-          </div>
         ) : (
           <SettingsPage
             providers={providers}

@@ -10,6 +10,7 @@ import type { Provider, ProviderInput, ProviderType } from '@shared/types.js';
 import type { DatabaseDriver } from '../driver.js';
 import { ID_PREFIX, newId } from '../ids.js';
 import { toJsonColumn, toProvider, type ProviderRow } from '../mappers.js';
+import { providerLastUsedAt, providerLastUsedMap } from './usage.js';
 
 export interface ProviderSecretRecord {
   id: string;
@@ -74,48 +75,6 @@ export interface UpsertProviderOptions {
   /** 显式清除密钥 */
   clearKey?: boolean;
   now: number;
-}
-
-/** 单个 provider 最近一次被使用的时间（毫秒）；从未用过为 null。 */
-function providerLastUsedAt(db: DatabaseDriver, id: string): number | null {
-  const row = db
-    .prepare<{ last_used: number | null }>(
-      `SELECT MAX(created_at) AS last_used
-         FROM messages
-        WHERE role = 'assistant'
-          AND json_valid(metadata_json)
-          AND json_extract(metadata_json, '$.providerId') = ?`,
-    )
-    .get(id);
-  return typeof row?.last_used === 'number' ? row.last_used : null;
-}
-
-/**
- * 每个 provider 最近一次被使用的时间，供列表一次性取回。
- *
- * 与 `providerLastUsedAt` 是同一口径的两种形态：列表要 N 条，详情只要 1 条。
- * 两者都读消息元数据，不做缓存——`providers` 表里没有这一列可读。
- */
-function providerLastUsedMap(db: DatabaseDriver): Map<string, number> {
-  const rows = db
-    .prepare<{ provider_id: string | null; last_used: number }>(
-      `SELECT json_extract(metadata_json, '$.providerId') AS provider_id,
-              MAX(created_at) AS last_used
-         FROM messages
-        WHERE role = 'assistant'
-          AND json_valid(metadata_json)
-          AND json_extract(metadata_json, '$.providerId') IS NOT NULL
-        GROUP BY provider_id`,
-    )
-    .all();
-
-  const map = new Map<string, number>();
-  for (const row of rows) {
-    if (typeof row.provider_id === 'string' && row.provider_id.length) {
-      map.set(row.provider_id, Number(row.last_used));
-    }
-  }
-  return map;
 }
 
 export function createProvider(

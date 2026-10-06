@@ -46,10 +46,12 @@ import {
   sendMessageInputSchema,
   settingsPatchSchema,
   tokensPreviewInputSchema,
+  usageSummaryInputSchema,
 } from '@shared/schemas.js';
 
 import { ContextError, buildTokenPreview } from '../services/assemble.js';
 import { beginGeneration } from '../services/generate.js';
+import { buildUsageSummary } from '../services/usage.js';
 import { compressConversation, previewCompressionRange } from '../services/compress.js';
 import { importCharacterFromFile } from '../services/character-import.js';
 import {
@@ -600,6 +602,13 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
             },
       ),
     ),
+  );
+
+  /* ------------------------------ 用量统计 ------------------------------ */
+
+  handlers.set(
+    INVOKE.usageSummary,
+    validated(usageSummaryInputSchema, (input) => buildUsageSummary(db, input ?? {})),
   );
 
   /* ------------------------------ 设置与诊断 ------------------------------ */

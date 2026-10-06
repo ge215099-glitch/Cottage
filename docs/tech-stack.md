@@ -91,7 +91,7 @@
 **另加两条主进程纪律**（不来自产品文档，但属于工程必需）：
 
 1. `app.requestSingleInstanceLock()` + 单窗口：SQLite 单写者假设下，避免两个实例同时写库。
-2. 主进程不得吞异常：未捕获异常必须落日志（脱敏）并让 UI 可见，否则"数据库写入失败要回滚并报错"（产品文档 3.7）无从兑现。
+2. 主进程不得吞异常：未捕获异常必须落日志（脱敏）并让 UI 可见，否则"数据库写入失败要回滚并报错"（产品文档 3.8）无从兑现。
 
 ---
 
@@ -152,7 +152,7 @@
 | `journal_mode` | `WAL` | 读写不互相阻塞，流式期间高频落库不卡 UI |
 | `foreign_keys` | `ON` | 删除会话要级联带走 messages / summaries |
 | `synchronous` | `NORMAL` | WAL 下的常规选择，崩溃不损坏库 |
-| 事务 | 一律走一个 `withTransaction(fn)` 包装 | 压缩写入、删除会话、截断+级联失效都必须是"全成或全不成"（产品文档 3.7 / 3.4） |
+| 事务 | 一律走一个 `withTransaction(fn)` 包装 | 压缩写入、删除会话、截断+级联失效都必须是"全成或全不成"（产品文档 3.8 / 3.4） |
 | 并发 | 单实例单连接，主进程内串行访问 | SQLite 单写者；配合单实例锁 |
 
 **必须用事务包裹的三处**（验收项 6 会覆盖）：压缩（写 `summaries` + 标记 `archived`）、恢复（删摘要 + 取消归档）、删除会话（`conversations` + `messages` + `summaries`）。
@@ -245,6 +245,7 @@
 | invoke | `settings:*` | 全局默认 Provider/模型、压缩默认、UI 布尔量 |
 | invoke | `export:*` | 导出会话（Markdown / JSON）、导出明文配置包（需二次确认） |
 | invoke | `tokens:preview` | 只读的 token 明细预览（不落库、不联网） |
+| invoke | `usage:summary` | 只读的用量聚合（从消息元数据派生，不落新表、不联网） |
 | event | `stream:chunk` / `stream:end` / `stream:error` | 主进程 → renderer 流式事件 |
 | event | `conversations:changed` / `messages:changed` | 增量通知，列表不做整表重取（UI 文档 5.6） |
 
@@ -261,9 +262,38 @@
 > 1. 可选参数要么在 preload 里省略（不传 `undefined`），要么在主进程 schema 里用
 >    `.nullish()`——**两者必须选一个并对齐**；
 > 2. `characters:list` 采用后者：`{}`、`undefined`、`null` 都表示"不筛选"；
+>    后来加的 `usage:summary` 走同一条路（不筛选 Key 时 `providerId` 是 `null`）；
 > 3. 由 `test/ipc-registration.test.ts` 的「IPC 可选入参的空值约定」守住：
 >    它逐一断言 preload 里每个 `?? null` 都在主进程有对应 handler，
 >    并断言 schema 既接受三种空写法、又仍然拒绝真正非法的查询。
+
+### 6.2.1 用量聚合放在哪一层
+
+`usage:summary` 是一条**只读投影**，实现分三段，边界刻意划在"SQL 取行 / 纯函数分桶"之间：
+
+```
+renderer  UsagePage（只渲染，不重算）
+   │ invoke('usage:summary', { range, providerId })
+   ▼
+main      services/usage.ts      解析区间 → 调 DAO → 交给 core 聚合
+   ▼
+main      db/dao/usage.ts        SQL：role='assistant' + json_valid + 区间 + provider 过滤
+   │                             （004 迁移为 role 建了索引）
+   ▼
+core      core/usage/index.ts    按**本地自然日**分桶、补齐空日、按模型分组（纯函数）
+```
+
+三条不变量：
+
+1. **分桶必须在 `core`，不能写进 SQL。** SQLite 没有时区概念，把
+   `strftime('%Y-%m-%d', created_at/1000, 'unixepoch')` 用在毫秒时间戳上会按 **UTC** 切天，
+   于是 UTC+8 的用户在 00:00–08:00 之间的请求会被算到前一天去——界面上只表现为"某天数字偏小"，
+   没人会去查。所以 `src/core/usage` 用 `new Date(ms)` 的本地字段拼 `YYYY-MM-DD`，
+   并由 `test/usage.test.ts` 断言"本地凌晨的请求归当天"。
+2. **不新建采集表。** 用量是 `messages.metadata_json` 的派生投影；另建一张表就多一个真相来源，
+   生成流程漏写采集行会**静默少算**。
+3. **一次生成 = 一次请求**，判据是"存在 assistant 消息"而不是"有 token 数"——
+   上游报错、正文为空、超时都会留下带 error 元数据的 assistant 消息，它们确实发出去了请求。
 
 ### 6.3 硬性安全约束
 
@@ -278,7 +308,7 @@
 | 本地图片通道 | 自有协议 `cottage-avatar://`，handler 把 URL 解析进 `<userData>/avatars/` 并拒绝目录穿越、非白名单扩展名、畸形编码 | 角色库要显示卡面图，但**不能**为此放行 `file:`；放行的是协议，renderer 仍读不到任意本地文件（见 6.5） |
 | 外链 | `setWindowOpenHandler` 一律 `deny`；正文里的链接交给 `shell.openExternal`，仅允许 http/https | 防止在应用窗口内打开任意页面 |
 | 导航 | 拦截 `will-navigate`，只允许应用自身 | 同上 |
-| 错误结构 | 统一 `{ code, message, retryable, httpStatus? }`，message 经脱敏 | UI 要分三态展示（产品文档 3.1 / 3.7） |
+| 错误结构 | 统一 `{ code, message, retryable, httpStatus? }`，message 经脱敏 | UI 要分三态展示（产品文档 3.1 / 3.8） |
 
 ### 6.4 密钥边界规则
 
@@ -286,7 +316,7 @@
 2. api_key 明文只存在于主进程内存中的一次调用栈内；用完即释放引用，不缓存到长期变量。
 3. 日志、错误信息、异常堆栈、导出文件默认范围**均不含 Key**；日志脱敏在写日志的函数里统一做，而不是靠调用方自觉（验收项 3）。
 4. 连接测试失败时只回传 HTTP 状态与上游错误摘要，且摘要需过一遍 Key 脱敏（上游有时会把 Key 回显在错误里）。
-5. 导出明文配置包必须走二次确认 + 强提示，并在 UI 说明"safeStorage 密文绑定本机凭据，直接拷库到另一台机器无法解密"（产品文档 3.1）。
+5. **不存在"把明文 Key 写出去"的出口。** 原方案里的"导出明文配置包（二次确认 + 强提示）"已整体移除：服务、IPC 通道、UI 入口与测试一并删掉，并由 `test/ipc-registration.test.ts` 断言 `export:*` 域里不再出现任何 `plain` 通道。代价是换机需重新填 Key，收益是密钥边界收窄成一句话——**只进不出**。
 
 ### 6.5 本地图片通道（角色卡头像）
 
@@ -416,7 +446,7 @@ interface ProviderAdapter {
 ```
 
 - 超时用 `AbortSignal.timeout(ms)` 与用户中断信号合并（`AbortSignal.any`），保证两条路径都收敛到同一个中断处理。
-- 429 退避重试 2 次（产品文档 3.7），每次重试前检查"是否已产出内容"。
+- 429 退避重试 2 次（产品文档 3.8），每次重试前检查"是否已产出内容"。
 - 中断后保留已收到内容并写 `metadata.interrupted = true`（验收项 10）。
 
 ### 7.6 流式落库与崩溃恢复

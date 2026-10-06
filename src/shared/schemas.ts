@@ -159,6 +159,20 @@ export const exportConversationSchema = z.object({
   conversationId: idSchema,
 });
 
+/**
+ * 用量查询入参。
+ *
+ * 与 `listCharactersInputSchema` 同理：preload 用 `providerId ?? null` 发送，
+ * 所以"不筛选 Key"到主进程时是 `null`——必须 `.nullish()`，否则整页空白。
+ * `range` 缺省即"本月"。
+ */
+export const usageSummaryInputSchema = z
+  .object({
+    range: z.enum(['month', 'week', 'year', 'all']).optional(),
+    providerId: idSchema.nullable().optional(),
+  })
+  .nullish();
+
 /* ------------------------------ 类型导出 ------------------------------ */
 
 export type ProviderInputPayload = z.infer<typeof providerInputSchema>;
@@ -173,3 +187,4 @@ export type ListCharactersPayload = z.infer<typeof listCharactersInputSchema>;
 export type TokensPreviewPayload = z.infer<typeof tokensPreviewInputSchema>;
 export type SettingsPatchPayload = z.infer<typeof settingsPatchSchema>;
 export type ImportCharacterPayload = z.infer<typeof importCharacterInputSchema>;
+export type UsageSummaryPayload = z.infer<typeof usageSummaryInputSchema>;

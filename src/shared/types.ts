@@ -327,6 +327,53 @@ export interface AppDiagnostics {
  */
 export type UsageRangeKey = 'month' | 'week' | 'year' | 'all';
 
+/** 一天的聚合值。`day` 是本地时区的 `YYYY-MM-DD`。 */
+export interface UsageDailyPoint {
+  day: string;
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  tokens: number;
+}
+
+/** 单个模型（或"模型未知"）的聚合值。 */
+export interface UsageModelStat {
+  model: string;
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  tokens: number;
+}
+
+export interface UsageSummary {
+  range: UsageRangeKey;
+  /** 筛选到哪一个 provider；null = 全部 Key */
+  providerId: string | null;
+  /** 统计区间的起止（毫秒，本地自然日的边界，含首含尾） */
+  from: number;
+  to: number;
+  /** 区间内的日序列，**没有请求的日子也占一位**（值为 0），图表才不会跳 */
+  daily: UsageDailyPoint[];
+  /** 区间内有请求的天数 */
+  activeDays: number;
+  models: UsageModelStat[];
+  requests: number;
+  /** 其中失败的次数（上游报错、空正文、超时都算） */
+  failedRequests: number;
+  promptTokens: number;
+  completionTokens: number;
+  tokens: number;
+  /** 区间内出现过思考 token 的次数（思考型模型） */
+  reasoningRequests: number;
+  /**
+   * 计数里是否混入了估算值。
+   *
+   * 上游没回 usage、或 tokenizer 判别不出精确切分时，`promptTokens` 是估算的
+   * （技术方案第 8 节：估算必须被标记）。为 true 时 UI 要给数字挂「约」。
+   */
+  anyEstimated: boolean;
+}
+
 export interface AppSettings {
   /** 聊天默认 */
   chatProviderId: string | null;
