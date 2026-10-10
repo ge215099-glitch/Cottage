@@ -4,12 +4,13 @@
  * 放在一个文件里而不是三处：它们共享同一套卡片列表与表单样式，
  * 拆开会让"同一套 token"变成三份几乎相同的 CSS。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { AppDiagnostics, Character, Persona, Provider } from '@shared/types.js';
 import { buildAvatarUrl } from '@shared/avatar-url.js';
 import { Icons } from './Icons.js';
 import { CharacterDetailDialog } from './CharacterDetailDialog.js';
+import { ScrimDialog } from './Overlays.js';
 
 /* ------------------------------------------------------------------ */
 /* 角色库                                                              */
@@ -303,72 +304,130 @@ function CharacterEditor({
 /* 人设                                                                */
 /* ------------------------------------------------------------------ */
 
-export interface PersonasPageProps {
-  personas: Persona[];
-  onCreate(input: { name: string; description: string }): void;
-  onUpdate(id: string, patch: Partial<Persona>): void;
-  onDelete(persona: Persona): void;
-  onSetDefault(persona: Persona): void;
+export interface PersonaSaveInput {
+  /** 有 id = 编辑，没有 = 新建 */
+  id?: string;
+  name: string;
+  description: string;
+  isDefault: boolean;
 }
 
-export function PersonasPage({
-  personas,
-  onCreate,
-  onUpdate,
-  onDelete,
-  onSetDefault,
-}: PersonasPageProps): JSX.Element {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+export interface PersonasPageProps {
+  personas: Persona[];
+  /** 新建与编辑共用一个入口，返回错误文案表示失败（失败时弹窗留在原地） */
+  onSave(input: PersonaSaveInput): Promise<string | null>;
+  onDelete(persona: Persona): void;
+}
+
+/**
+ * 弹窗里的表单状态（只在打开时从 persona 初始化一次）。
+ */
+interface PersonaFormState {
+  name: string;
+  description: string;
+  isDefault: boolean;
+}
+
+/** 打开着的到底是"新建"还是"编辑某一条"——由 editing 与当前列表推导，不另存一份。 */
+type DialogTarget = 'new' | Persona | null;
+
+/**
+ * 人设页：**列表 + 弹窗**，与「API Key」页同一套形态。
+ *
+ * 三条刻意的设计（第一条是修一个真实报上来的 bug）：
+ *
+ * 1. **编辑走弹窗，不用 `window.prompt`**。Electron 的 renderer 里 `prompt()` 是
+ *    未实现的空函数（返回 null 且不弹任何窗口），所以"点编辑改名字"整条路径
+ *    此前是**静默失效**的——点下去什么都不会发生，也看不到任何报错。
+ *    而且改名之外还有描述与「设为默认」，一行 `prompt` 本来就装不下。
+ * 2. **页面上不常驻创建表单**。新建也是一次弹窗：常驻表单会让"我有哪几个人设"
+ *    淹没在一排输入框里，和 API Key 页的理由完全一样。
+ * 3. **「设为默认」进弹窗，不做成每行一个按钮**。它是这一份人设的属性，
+ *    不是每行都要摆出来的动作；行上只留「编辑 / 删除」两个按需出现的图标。
+ */
+export function PersonasPage({ personas, onSave, onDelete }: PersonasPageProps): JSX.Element {
+  /** null = 弹窗关闭；`'new'` = 新建；其余是正在编辑的 persona id */
+  const [editing, setEditing] = useState<'new' | string | null>(null);
+  const [form, setForm] = useState<PersonaFormState>({ name: '', description: '', isDefault: false });
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const firstFieldRef = useRef<HTMLInputElement | null>(null);
+
+  /**
+   * 弹窗目标：`'new'`、某一条 persona，或 null（关闭）。
+   *
+   * 关键是从 props **实时推导**，而不是把 persona 对象缓存在 state 里：
+   * 保存成功、外部删除、列表刷新之后，这里会自动反映最新事实——
+   * 尤其是"弹窗里的那条人设已经不存在了"时它会自己关掉，
+   * 不会退化成一个标题写着「新建人设」、底下却在编辑鬼魂的框。
+   */
+  const target: DialogTarget =
+    editing === null
+      ? null
+      : editing === 'new'
+        ? 'new'
+        : (personas.find((p) => p.id === editing) ?? null);
+  const editingPersona = target && target !== 'new' ? target : null;
+
+  const close = (): void => {
+    if (saving) return;
+    setEditing(null);
+    setFormError(null);
+  };
+
+  const openNew = (): void => {
+    // 库里还没有人设时先勾上「设为默认」：第一个必然成为默认（DAO 也是这么做的），
+    // 把这件事摆在明面上，用户不用事后回来再勾一次。
+    setForm({ name: '', description: '', isDefault: personas.length === 0 });
+    setFormError(null);
+    setEditing('new');
+  };
+
+  const openEdit = (persona: Persona): void => {
+    setForm({
+      name: persona.name,
+      description: persona.description,
+      isDefault: persona.isDefault,
+    });
+    setFormError(null);
+    setEditing(persona.id);
+  };
+
+  const submit = async (): Promise<void> => {
+    const name = form.name.trim();
+    if (!name) return;
+    setSaving(true);
+    setFormError(null);
+    const error = await onSave({
+      ...(editingPersona ? { id: editingPersona.id } : {}),
+      name,
+      description: form.description,
+      isDefault: form.isDefault,
+    });
+    setSaving(false);
+    // 失败就留在弹窗里报错：把用户刚填的一屏内容丢掉是最差的做法
+    if (error) setFormError(error);
+    else setEditing(null);
+  };
 
   return (
     <div className="page">
       <div className="page-inner">
-        <h1>人设</h1>
+        <div className="page-head-row">
+          <h1>人设</h1>
+          <div className="page-head-actions">
+            <button type="button" className="btn primary" style={{ width: 'auto' }} onClick={openNew}>
+              新建人设
+            </button>
+          </div>
+        </div>
         <p className="lede">
           Persona 是全局资源，用来替换 <code>{'{{user}}'}</code>。每个会话可绑定一个；
           未绑定时使用全局默认。关系落在会话上，不在这里。
         </p>
 
-        <div className="provider-form">
-          <div className="field">
-            <label htmlFor="persona-name">名称</label>
-            <input
-              id="persona-name"
-              type="text"
-              value={name}
-              placeholder="例如：ASMobbin"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="persona-desc">描述（可选）</label>
-            <input
-              id="persona-desc"
-              type="text"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </div>
-          <div className="form-actions">
-            <button
-              type="button"
-              className="btn primary"
-              style={{ width: 'auto' }}
-              disabled={!name.trim()}
-              onClick={() => {
-                onCreate({ name: name.trim(), description });
-                setName('');
-                setDescription('');
-              }}
-            >
-              新建人设
-            </button>
-          </div>
-        </div>
-
         {personas.length === 0 ? (
-          <div className="empty-page">还没有人设　新建一个，聊天时的「你」就有名字了</div>
+          <div className="empty-page">还没有人设　点击「新建人设」创建第一个</div>
         ) : (
           <div className="card-list">
             {personas.map((persona) => (
@@ -376,33 +435,25 @@ export function PersonasPage({
                 <div className="card-main">
                   <div className="card-name">
                     {persona.name}
-                    {persona.isDefault ? <span className="sub">（默认）</span> : null}
+                    {persona.isDefault ? <span className="tag">默认</span> : null}
                   </div>
                   <div className="card-desc">{persona.description || '（没有描述）'}</div>
                 </div>
                 <div className="card-actions">
-                  {!persona.isDefault ? (
-                    <button type="button" className="btn" onClick={() => onSetDefault(persona)}>
-                      设为默认
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     className="icon-btn"
-                    title="重命名"
-                    aria-label="重命名人设"
-                    onClick={() => {
-                      const next = window.prompt('新名称', persona.name);
-                      if (next?.trim()) onUpdate(persona.id, { name: next.trim() });
-                    }}
+                    title="编辑"
+                    aria-label={`编辑 ${persona.name}`}
+                    onClick={() => openEdit(persona)}
                   >
                     {Icons.edit()}
                   </button>
                   <button
                     type="button"
-                    className="icon-btn"
+                    className="icon-btn danger"
                     title="删除"
-                    aria-label="删除人设"
+                    aria-label={`删除 ${persona.name}`}
                     onClick={() => onDelete(persona)}
                   >
                     {Icons.trash()}
@@ -413,6 +464,81 @@ export function PersonasPage({
           </div>
         )}
       </div>
+
+      {target ? (
+        <ScrimDialog
+          title={editingPersona ? `编辑人设：${editingPersona.name}` : '新建人设'}
+          className="form-dialog"
+          initialFocusRef={firstFieldRef}
+          onClose={close}
+          footer={
+            <>
+              {editingPersona ? (
+                <button
+                  type="button"
+                  className="btn danger"
+                  onClick={() => {
+                    close();
+                    onDelete(editingPersona);
+                  }}
+                >
+                  删除
+                </button>
+              ) : null}
+              <div className="spacer" />
+              <button type="button" className="btn" disabled={saving} onClick={close}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                style={{ width: 'auto' }}
+                disabled={saving || !form.name.trim()}
+                onClick={() => void submit()}
+              >
+                {editingPersona ? '保存修改' : '创建'}
+              </button>
+            </>
+          }
+        >
+          <div className="provider-form">
+            <div className="field">
+              <label htmlFor="persona-name">名称</label>
+              <input
+                ref={firstFieldRef}
+                id="persona-name"
+                type="text"
+                value={form.name}
+                placeholder="例如：ASMobbin"
+                onChange={(event) => setForm({ ...form, name: event.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="persona-desc">描述（可选）</label>
+              <input
+                id="persona-desc"
+                type="text"
+                value={form.description}
+                placeholder="例如：旅人，话不多"
+                onChange={(event) => setForm({ ...form, description: event.target.value })}
+              />
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={form.isDefault}
+                onChange={(event) => setForm({ ...form, isDefault: event.target.checked })}
+              />
+              设为默认人设
+            </label>
+          </div>
+          {formError ? (
+            <div className="dialog-error" role="alert">
+              {formError}
+            </div>
+          ) : null}
+        </ScrimDialog>
+      ) : null}
     </div>
   );
 }

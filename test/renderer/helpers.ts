@@ -244,6 +244,21 @@ export function installFakeApi(options: FakeApiOptions = {}): {
     return fn;
   };
 
+  /**
+   * 人设在这份假 API 里是**可变状态**，而不是"每次都回同一个常量"。
+   *
+   * 之前 create/update/setDefault 一律返回 `makePersona()`（固定的 per_1 / ASMobbin），
+   * 于是"改了 B 却把默认落给了 A""新建后列表里没有新人设"这类错误永远测不出来——
+   * 假数据的返回值掩盖了真实契约（主进程返回的是**被改的那一条**）。
+   * 现在它跟着输入走，并且像真 DAO 一样维护「有且至多一个默认」。
+   */
+  const personaState: Persona[] = [...(options.personas ?? [makePersona()])];
+  const personaOrder = (list: Persona[]): Persona[] =>
+    [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.createdAt - b.createdAt);
+  const setPersonaDefault = (id: string): void => {
+    for (const persona of personaState) persona.isDefault = persona.id === id;
+  };
+
   const api = {
     providers: {
       list: method('providers.list', async () => ok(options.providers ?? [makeProvider()])),
@@ -283,11 +298,45 @@ export function installFakeApi(options: FakeApiOptions = {}): {
       tags: method('characters.tags', async () => ok([{ tag: '奇幻', count: 1 }])),
     },
     personas: {
-      list: method('personas.list', async () => ok(options.personas ?? [makePersona()])),
-      create: method('personas.create', async () => ok(makePersona())),
-      update: method('personas.update', async () => ok(makePersona())),
-      delete: method('personas.delete', async () => ok({ ok: true })),
-      setDefault: method('personas.setDefault', async () => ok([makePersona()])),
+      list: method('personas.list', async () => ok(personaOrder(personaState))),
+      create: method('personas.create', async (input: unknown) => {
+        const patch = (input ?? {}) as Partial<Persona>;
+        const created = makePersona({
+          name: patch.name ?? '未命名',
+          description: patch.description ?? '',
+          createdAt: T0 + personaState.length,
+          // 库里第一个自动成为默认（与真 DAO 一致）
+          isDefault: patch.isDefault ?? personaState.length === 0,
+        });
+        personaState.push(created);
+        if (created.isDefault) setPersonaDefault(created.id);
+        return ok(created);
+      }),
+      update: method('personas.update', async (id: unknown, patch: unknown) => {
+        const targetId = String(id);
+        const index = personaState.findIndex((p) => p.id === targetId);
+        const existing = personaState[index];
+        if (!existing) {
+          return {
+            ok: false as const,
+            error: { code: 'NOT_FOUND' as const, message: '人设不存在', retryable: false },
+          };
+        }
+        const fields = (patch ?? {}) as Partial<Persona>;
+        const updated: Persona = { ...existing, ...fields, id: targetId, updatedAt: T0 + 1 };
+        personaState[index] = updated;
+        if (fields.isDefault === true) setPersonaDefault(targetId);
+        return ok(updated);
+      }),
+      delete: method('personas.delete', async (id: unknown) => {
+        const index = personaState.findIndex((p) => p.id === String(id));
+        if (index !== -1) personaState.splice(index, 1);
+        return ok({ ok: true });
+      }),
+      setDefault: method('personas.setDefault', async (id: unknown) => {
+        setPersonaDefault(String(id));
+        return ok(personaOrder(personaState));
+      }),
     },
     conversations: {
       list: method('conversations.list', async () => ok(options.conversations ?? [makeConversation()])),

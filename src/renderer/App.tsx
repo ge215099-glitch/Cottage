@@ -886,21 +886,45 @@ export function App(): JSX.Element {
         ) : view === 'personas' ? (
           <PersonasPage
             personas={personas}
-            onCreate={(input) => {
-              void (async () => {
-                const result = await api().personas.create(input);
-                if (!result.ok) {
-                  toast(result.error.message, 'error');
-                  return;
-                }
+            /*
+             * 新建与编辑共用一个入口（与 API Key 页同形）。
+             *
+             * 关键点是**把错误文案返回给弹窗**，而不是在这里 toast 后静默关闭：
+             * 用户填了一屏内容，失败时应该留在原地看到原因、内容还在。
+             * 「设为默认」也在这里顺手做掉——它与人设本身是两处状态
+             * （`personas.is_default` 与"谁是全局默认"），勾了就得两处都落。
+             */
+            onSave={async (input) => {
+              /*
+               * 编辑的 id 在 await 之前就定下来，后面「设为默认」用的是**它**，
+               * 不是 `update` 返回对象里的 id。理由：命令行的目标是人设本身，
+               * 不该依赖返回值再告诉我改的是谁——那是"用回参当输入"。
+               * （这个坑是测试帮我们抓到的：此前渲染层的假 API 无论更新谁
+               *   都返回同一条人设，于是"改 B 把默认落给了 A"这种情况谁也看不见。）
+               */
+              const editingId = input.id;
+              const result = editingId
+                ? await api().personas.update(editingId, {
+                    name: input.name,
+                    description: input.description,
+                  })
+                : await api().personas.create({
+                    name: input.name,
+                    description: input.description,
+                  });
+              if (!result.ok) return result.error.message;
+
+              if (input.isDefault) {
+                // 创建时 id 由主进程生成，只能从返回值拿；编辑时用编辑前那个 id
+                const targetId = editingId ?? result.data.id;
+                const changed = await api().personas.setDefault(targetId);
+                if (!changed.ok) return changed.error.message;
+                // setDefault 返回的是"改完之后"的整份列表，直接写回 store
+                useAppStore.getState().setPersonas(changed.data);
+              } else {
                 await refreshPersonas();
-              })();
-            }}
-            onUpdate={(id, patch) => {
-              void (async () => {
-                await api().personas.update(id, { name: patch.name, description: patch.description });
-                await refreshPersonas();
-              })();
+              }
+              return null;
             }}
             onDelete={(persona) => {
               setDeleteError(null);
@@ -910,12 +934,6 @@ export function App(): JSX.Element {
                 title: persona.name,
                 paragraphs: [`「${persona.name}」`, '绑定该人设的会话会被解除绑定。'],
               });
-            }}
-            onSetDefault={(persona) => {
-              void (async () => {
-                const result = await api().personas.setDefault(persona.id);
-                if (result.ok) useAppStore.getState().setPersonas(result.data);
-              })();
             }}
           />
         ) : view === 'usage' ? (
