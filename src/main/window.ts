@@ -9,9 +9,12 @@
  *   - CSP：生产与开发两套，构造逻辑在 `csp.ts`（不依赖 electron，可直接单测）。
  *   - 外链一律 deny，正文里的链接交给 `shell.openExternal` 且只允许 http/https。
  *   - 拦截 `will-navigate`，只允许应用自身。
+ *   - **不装配原生菜单栏**：Windows / Linux 上不出现 `File / Edit / View / Window / Help`
+ *     那一条（策略与理由见 `app-menu.ts`）。
  */
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, Menu, shell } from 'electron';
 import path from 'node:path';
+import { appMenuTemplate } from './app-menu.js';
 import { buildContentSecurityPolicy, isInternalNavigation } from './csp.js';
 import { log } from './log.js';
 
@@ -22,6 +25,16 @@ const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] ?? null;
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
 
 export function createMainWindow(): BrowserWindow {
+  /*
+   * 菜单栏必须在**建窗口之前**定下来。
+   *
+   * 置空之后系统不会再画那一条；如果反过来（先建窗口再置空），Windows 上会经历
+   * "菜单已经画上去、又消失"的一帧。这里也不依赖 Electron 的默认菜单会不会被装上——
+   * 自己显式装配一次，Windows / Linux 拿到的就是 `null`（见 `app-menu.ts`）。
+   */
+  const menuTemplate = appMenuTemplate(process.platform);
+  Menu.setApplicationMenu(menuTemplate ? Menu.buildFromTemplate(menuTemplate) : null);
+
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -80,7 +93,22 @@ export function createMainWindow(): BrowserWindow {
     log.error('渲染进程异常退出', details);
   });
 
+  /*
+   * 菜单栏去掉之后，`View → Toggle Developer Tools` 与它的 F12 / ⌘⌥I 也一起没了。
+   * 生产环境这是想要的（成品不该带开发者入口），但 `pnpm dev` 的调试仍需一条路径，
+   * 所以**只在开发模式**（有 dev server 时）补一个快捷键。
+   */
   if (DEV_SERVER_URL) {
+    window.webContents.on('before-input-event', (event, input) => {
+      const isToggle =
+        input.type === 'keyDown' &&
+        (input.key === 'F12' ||
+          ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i'));
+      if (!isToggle) return;
+      event.preventDefault();
+      window.webContents.toggleDevTools();
+    });
+
     void window.loadURL(DEV_SERVER_URL);
   } else {
     void window.loadFile(path.join(__dirname, '../renderer/index.html'));

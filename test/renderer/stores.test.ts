@@ -5,8 +5,8 @@
  * 占用条阈值、压缩播报文案、菜单宽限期。它们不需要 DOM，因此在纯 Node 下跑。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as appStoreModule from '../../src/renderer/stores/app.js';
 import {
-  filterConversations,
   groupConversations,
   sortConversations,
 } from '../../src/renderer/stores/app.js';
@@ -71,24 +71,21 @@ describe('会话列表排序（与主进程 SQL 规则一致）', () => {
   });
 });
 
-describe('会话搜索过滤（UI 文档 5.2）', () => {
-  const list = [
-    makeConversation({ id: 'a', title: '夜巡酒馆的第三夜' }),
-    makeConversation({ id: 'b', title: '修钟的代价' }),
-  ];
-
-  it('输入不足 2 字时不过滤（避免全表抖动）', () => {
-    expect(filterConversations(list, '')).toHaveLength(2);
-    expect(filterConversations(list, '酒')).toHaveLength(2);
+describe('会话搜索已整体移除（UI 文档 5.2 / 第 14 节，v1.8）', () => {
+  /*
+   * 守的是"别再把它加回来"：会话搜索当年在 store 里落成 `query` + `setQuery` +
+   * `filterConversations` 三件套，左栏 ② 区还有一个常驻搜索框与 ⌘K 快捷键。
+   * 三件套一起删除之后，这里用模块导出面把它钉住——只要有人恢复其中任何一件，
+   * 这条断言就会红，逼他先回答"为什么又要一个常驻搜索框"。
+   */
+  it('store 不再导出会话标题过滤函数', () => {
+    expect('filterConversations' in appStoreModule).toBe(false);
   });
 
-  it('2 字以上按标题匹配，且大小写不敏感', () => {
-    expect(filterConversations(list, '酒馆').map((c) => c.id)).toEqual(['a']);
-    expect(filterConversations([makeConversation({ id: 'x', title: 'Hello World' })], 'hello')).toHaveLength(1);
-  });
-
-  it('前后空白被忽略', () => {
-    expect(filterConversations(list, '  酒馆  ').map((c) => c.id)).toEqual(['a']);
+  it('store 里既没有 query 状态也没有 setQuery', () => {
+    const state = appStoreModule.useAppStore.getState();
+    expect('query' in state).toBe(false);
+    expect('setQuery' in state).toBe(false);
   });
 });
 

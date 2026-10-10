@@ -88,10 +88,11 @@
 | `app.getPath('userData')` | 数据库与自定义头像的落点 | `cottage.db` 与 `avatars/` 都在其下，DB 内存相对路径 |
 | `utilityProcess` | 把 token 计数等重计算移出主进程事件循环 | 仅在实测有卡顿时启用（第 8 节） |
 
-**另加两条主进程纪律**（不来自产品文档，但属于工程必需）：
+**另加三条主进程纪律**（不来自产品文档，但属于工程必需）：
 
 1. `app.requestSingleInstanceLock()` + 单窗口：SQLite 单写者假设下，避免两个实例同时写库。
 2. 主进程不得吞异常：未捕获异常必须落日志（脱敏）并让 UI 可见，否则"数据库写入失败要回滚并报错"（产品文档 3.8）无从兑现。
+3. **不装配原生应用菜单栏**：Electron 在没人调用 `Menu.setApplicationMenu` 时会自动装一份默认菜单（`File / Edit / View / Window / Help`），而 Cottage 没有任何菜单项要放。策略放在 `src/main/app-menu.ts`（不含 electron 运行时值的纯函数，可纯 Node 单测）：Windows / Linux 取 `null`，macOS 只留应用 / 编辑 / 窗口三组（那一条菜单栏还承担 ⌘C/⌘V/⌘Q，不能置空）。装配在 `window.ts`，且**先于建窗口**。菜单栏没了，`View → Toggle Developer Tools` 也一起没了，因此开发模式（有 dev server 时）单独补一个 F12 / `Ctrl+Shift+I`，成品不带开发者入口。
 
 ---
 
@@ -720,7 +721,7 @@ UI 文档对菜单提了明确时序（180ms 宽限期、锚点切换不闪断�
 | 层 | 运行环境 | 覆盖 | 对应验收 |
 |---|---|---|---|
 | 单元 | 纯 Node（不需要 Electron、不需要重编原生模块） | PromptSpec 幂等、变量替换、token 求和与精确/估算标记、OpenAI/Anthropic 请求体快照、摘要模板解析、角色卡 v2/v3 round-trip 保留 `raw_json`、迁移幂等、压缩事务原子性、截断级联失效、`pinned_at` 不改 `updated_at`、**IPC 通道声明与 handler 注册的完整性（静态比对，见下方勘误）** | 产品文档 7 的 1–8、11 |
-| 组件 | jsdom | 行内重命名（提交/Esc/空值）、删除确认（默认焦点在取消、展示消息数与摘要段数）、搜索过滤态、`⋯` 菜单键盘与焦点回收、占用条 75%/80% 阈值、估算"约"前缀、无头像断言 | 两份 UI 文档的绝大多数条目 |
+| 组件 | jsdom | 行内重命名（提交/Esc/空值）、删除确认（默认焦点在取消、展示消息数与摘要段数）、`⋯` 菜单键盘与焦点回收、占用条 75%/80% 阈值、估算"约"前缀、无头像断言、**左栏没有会话搜索（反向锚点）** | 两份 UI 文档的绝大多数条目 |
 | E2E | Playwright 拉起 Electron | 流式停止保留部分内容、强杀后重启状态一致且无残留"生成中"、虚拟滚动、窗口宽度自适应与右栏抽屉、真实布局类断言（悬停无位移、菜单翻转不被裁切） | 产品文档 7 的 9/10、UI 文档的布局类条目 |
 | 文档 | 纯 Node | 设计文档与技术方案的结构完整性（本仓 `scripts/verify-*.mjs`） | 仓库 `AGENTS.md` |
 
@@ -748,7 +749,8 @@ src/
   shared/                  IPC 通道 · zod schema · 类型 · 错误码
   main/
     index.ts               应用生命周期 · 单实例锁 · 崩溃清扫
-    window.ts              窗口与安全策略（CSP / 导航 / 外链）
+    window.ts              窗口与安全策略（CSP / 导航 / 外链 / 菜单栏装配）
+    app-menu.ts            原生菜单栏策略（Windows/Linux 不装配，macOS 只留系统三组）
     ipc/                   每个域一个 handler 模块
     db/                    connection · migrations/ · dao/
     secrets/               safeStorage 封装与脱敏

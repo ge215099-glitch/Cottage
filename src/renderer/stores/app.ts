@@ -35,8 +35,6 @@ export const DEFAULT_USAGE_FILTER: UsageFilter = { range: 'month', providerId: n
 export interface AppState {
   view: ViewKey;
   sidebarCollapsed: boolean;
-  /** 搜索框内容；过滤在后端做（会话标题匹配） */
-  query: string;
 
   conversations: Conversation[];
   characters: Character[];
@@ -56,7 +54,6 @@ export interface AppState {
   setView(view: ViewKey): void;
   toggleSidebar(): void;
   setSidebarCollapsed(collapsed: boolean): void;
-  setQuery(query: string): void;
 
   setConversations(list: Conversation[]): void;
   upsertConversation(conversation: Conversation): void;
@@ -74,7 +71,6 @@ export interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   view: 'chat',
   sidebarCollapsed: false,
-  query: '',
   conversations: [],
   characters: [],
   personas: [],
@@ -87,7 +83,6 @@ export const useAppStore = create<AppState>((set) => ({
   setView: (view) => set({ view }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
-  setQuery: (query) => set({ query }),
 
   setConversations: (conversations) => set({ conversations }),
   upsertConversation: (conversation) =>
@@ -145,11 +140,4 @@ export function groupConversations(list: Conversation[]): ConversationGroups {
     pinned: sorted.filter((c) => c.pinnedAt !== null),
     rest: sorted.filter((c) => c.pinnedAt === null),
   };
-}
-
-/** 会话标题过滤；输入不足 2 字时不过滤（避免全表抖动，UI 文档 5.2）。 */
-export function filterConversations(list: Conversation[], query: string): Conversation[] {
-  const q = query.trim().toLowerCase();
-  if (q.length < 2) return list;
-  return list.filter((c) => c.title.toLowerCase().includes(q));
 }

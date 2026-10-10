@@ -4,7 +4,7 @@
  *
  * 覆盖范围与**诚实边界**（技术方案 11.2 明确要求）：
  *   - 这里能验：DOM 结构、`⋯` 的出现机制、菜单项与危险色、行内重命名行为、
- *     列表两段分组、搜索过滤、侧栏两态的表现、键盘导航。
+ *     列表两段分组、**② 区没有会话搜索**（v1.8 的移除锚点）、侧栏两态的表现、键盘导航。
  *   - 这里**测不了**：悬停前后 `getBoundingClientRect()` 是否位移、
  *     菜单在视口边缘是否翻转、真实布局宽度——jsdom 没有排版引擎，
  *     把它们写在这里只会得到永远为真的假通过。那三项留给 E2E。
@@ -43,7 +43,6 @@ function setup(
     onTogglePin: vi.fn(),
     onDeleteConversation: vi.fn(),
     onOpenPersonaMenu: vi.fn(),
-    searchInputRef: { current: null },
     ...props,
   };
 
@@ -66,7 +65,6 @@ beforeEach(() => {
   useAppStore.setState({
     view: 'chat',
     sidebarCollapsed: false,
-    query: '',
     conversations: [],
     characters: [],
     personas: [makePersona()],
@@ -337,42 +335,44 @@ describe('列表分组与空态（验收项 23 / 5.1）', () => {
   });
 });
 
-describe('搜索过滤（验收项 14）', () => {
-  it('输入 2 字以上才过滤，命中片段加粗', () => {
+describe('会话搜索已移除（验收项 14 的反向锚点，v1.8）', () => {
+  /*
+   * 这一组断言守的是"**别再把它加回来**"。
+   *
+   * 曾经这里有一个常驻搜索框（② 区第二行）+ ⌘K 聚焦 + 2 字以上按标题过滤，
+   * 并在过滤态把「已置顶」标题换成「找到 N 个对话」。它被整体去掉的原因写在
+   * UI 文档 5.2 / 第 14 节：② 区是"一屏一个主动作"（P1）的地盘，而列表本身
+   * 已经是"最近用过的在最上面"的有序队列，常驻输入框的收益不抵它的占位。
+   */
+  it('② 区只有「新对话」一个控件，没有搜索输入框', () => {
+    const { container } = setup({ conversations: [makeConversation()] });
+
+    const actions = container.querySelector('.sidebar-actions');
+    expect(actions).not.toBeNull();
+    expect(actions!.querySelectorAll('input')).toHaveLength(0);
+    expect(actions!.textContent).toBe('新对话');
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(container.querySelector('.search-row')).toBeNull();
+  });
+
+  it('列表恒为全部会话：标题命中关键词也不会被过滤掉', () => {
     setup({
       conversations: [
         makeConversation({ id: 'c1', title: '夜巡酒馆的第三夜' }),
         makeConversation({ id: 'c2', title: '修钟的代价' }),
       ],
-      query: '酒馆',
     });
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(1);
-    // 匹配片段用 <b> 强调
-    expect(screen.getByText('酒馆').tagName).toBe('B');
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    // 过滤态的两种文案都不该再出现
+    expect(screen.queryByText(/找到 \d+ 个对话/)).toBeNull();
+    expect(screen.queryByText('没有匹配的对话')).toBeNull();
   });
 
-  it('过滤态显示「找到 N 个对话」而不是分组标题（置顶项仍排最前）', () => {
-    setup({
-      conversations: [
-        makeConversation({ id: 'c1', title: '夜巡酒馆的第三夜', pinnedAt: T0 }),
-        makeConversation({ id: 'c2', title: '修钟的代价' }),
-      ],
-      query: '酒馆',
-    });
-
-    expect(screen.getByText('找到 1 个对话')).toBeTruthy();
-    expect(screen.queryByText('已置顶')).toBeNull();
-  });
-
-  it('无结果时显示「没有匹配的对话」', () => {
-    setup({ conversations: [makeConversation()], query: '不存在的关键词' });
-    expect(screen.getByText('没有匹配的对话')).toBeTruthy();
-  });
-
-  it('过滤态下命中行仍保留 ⋯（重命名/删除在过滤态同样可用）', () => {
-    setup({ conversations: [makeConversation()], query: '酒馆' });
-    expect(screen.getAllByRole('button', { name: /更多操作/ })).toHaveLength(1);
+  it('store 不再暴露会话搜索的状态与方法（UI 文档 5.2 已作废）', () => {
+    const state = useAppStore.getState();
+    expect('query' in state).toBe(false);
+    expect('setQuery' in state).toBe(false);
   });
 });
 

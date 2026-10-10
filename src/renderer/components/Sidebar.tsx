@@ -2,17 +2,21 @@
  * 左侧栏（UI 文档第 2.1 / 3 / 4 / 5 节）。
  *
  * 结构（上固定 / 下滚动）：
- *   ① 品牌行 ② 新对话 + 搜索 ③ 固定导航 ④ 列表标题 ⑤ 对话列表（唯一滚动区）⑥ 底部人设
+ *   ① 品牌行 ② 新对话 ③ 固定导航 ④ 列表标题 ⑤ 对话列表（唯一滚动区）⑥ 底部人设
  *
  * 三个容易被低估的实现点：
  *   1. `⋯` 按钮**常驻占位**（26px 恒在，只是 opacity 0），否则悬停时标题会横跳。
  *   2. `⋯` **不进入 Tab 序列**（`tabIndex={-1}`），改用 Shift+F10 触发——
  *      1000 条会话不该产生 2000 个 Tab 停留点（UI 文档 5.4）。
  *   3. 列表**只有「已置顶」与其余全部两段**，不按时间分组。
+ *
+ * **会话搜索已整体移除**（UI 文档 5.2 与第 14 节，v1.8）：② 区因此只剩「新对话」
+ * 一个控件，`⌘K / Ctrl+K` 也不再聚焦任何输入框，列表恒为"全部会话"。
+ * 回归锚点写在组件测试里（没有搜索框、没有「找到 N 个对话」）。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
-import { useAppStore, filterConversations, groupConversations, type ViewKey } from '../stores/app.js';
+import { useAppStore, groupConversations, type ViewKey } from '../stores/app.js';
 import { useChatStore } from '../stores/chat.js';
 import { DEFAULT_GRACE_MS, useMenuStore } from '../stores/menu.js';
 import { Icons } from './Icons.js';
@@ -49,7 +53,6 @@ export interface SidebarProps {
   onTogglePin(id: string, pinned: boolean): void;
   onDeleteConversation(id: string): void;
   onOpenPersonaMenu(rect: DOMRect, trigger: HTMLElement): void;
-  searchInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
 export function Sidebar({
@@ -59,14 +62,11 @@ export function Sidebar({
   onTogglePin,
   onDeleteConversation,
   onOpenPersonaMenu,
-  searchInputRef,
 }: SidebarProps): JSX.Element {
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
-  const query = useAppStore((s) => s.query);
-  const setQuery = useAppStore((s) => s.setQuery);
   const conversations = useAppStore((s) => s.conversations);
   const personas = useAppStore((s) => s.personas);
 
@@ -95,13 +95,8 @@ export function Sidebar({
     input.setSelectionRange(input.value.length, input.value.length);
   }, [renamingId]);
 
-  /** 过滤 + 两段分组。注意过滤态下不渲染「已置顶」标题（UI 文档 5.2）。 */
-  const filtered = useMemo(
-    () => filterConversations(conversations, query),
-    [conversations, query],
-  );
-  const groups = useMemo(() => groupConversations(filtered), [filtered]);
-  const filtering = query.trim().length >= 2;
+  /** 两段分组：已置顶（有才出现）+ 其余全部。 */
+  const groups = useMemo(() => groupConversations(conversations), [conversations]);
 
   /** 打开某个会话行的 ⋯ 菜单（菜单项 ≤ 5 条，UI 文档 4.3）。 */
   const openRowMenu = (conversation: Conversation, trigger: HTMLElement): void => {
@@ -212,9 +207,7 @@ export function Sidebar({
           />
         ) : (
           <>
-            <span className="conv-title">
-              <Highlight text={conversation.title} query={filtering ? query : ''} />
-            </span>
+            <span className="conv-title">{conversation.title}</span>
             {streaming ? <span className="stream-dot" title="生成中" /> : null}
             <button
               type="button"
@@ -255,29 +248,12 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* ② 主操作 */}
+      {/* ② 主操作：② 区只有这一个控件（会话搜索已移除，见文件头与 UI 文档 5.2） */}
       <div className="sidebar-actions">
         <button type="button" className="new-chat" onClick={onNewChat} title="新对话 (Ctrl+N)">
           {Icons.plus()}
           <span>新对话</span>
         </button>
-        <div className="search-row">
-          {Icons.search()}
-          <input
-            ref={searchInputRef}
-            type="search"
-            placeholder="搜索对话…"
-            aria-label="搜索对话"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                setQuery('');
-              }
-            }}
-          />
-          <span className="kbd">Ctrl K</span>
-        </div>
       </div>
 
       {/* ③ 固定导航：当前项 = 浅填充（无左侧强调条，项间留 4px 缝，见 sidebar.css） */}
@@ -315,27 +291,13 @@ export function Sidebar({
         aria-label="对话列表"
         onKeyDown={onListKeyDown}
       >
-        {!filtered.length ? (
+        {!conversations.length ? (
           <div className="list-empty">
-            {filtering ? (
-              '没有匹配的对话'
-            ) : (
-              <>
-                还没有对话　
-                <button type="button" onClick={onNewChat}>
-                  新建一个 →
-                </button>
-              </>
-            )}
+            还没有对话　
+            <button type="button" onClick={onNewChat}>
+              新建一个 →
+            </button>
           </div>
-        ) : filtering ? (
-          <>
-            {/* 过滤态：不渲染「已置顶」标题，改为一行计数（置顶项仍排最前） */}
-            <div className="group-title">
-              <span>找到 {filtered.length} 个对话</span>
-            </div>
-            <ConversationRows rows={[...groups.pinned, ...groups.rest]} renderRow={renderRow} />
-          </>
         ) : (
           <>
             {groups.pinned.length ? (
@@ -459,21 +421,6 @@ export const RenameInput = (() => {
     );
   };
 })();
-
-/** 搜索命中片段加粗（其余不变）。 */
-function Highlight({ text, query }: { text: string; query: string }): JSX.Element {
-  const q = query.trim();
-  if (q.length < 2) return <>{text}</>;
-  const index = text.toLowerCase().indexOf(q.toLowerCase());
-  if (index === -1) return <>{text}</>;
-  return (
-    <>
-      {text.slice(0, index)}
-      <b>{text.slice(index, index + q.length)}</b>
-      {text.slice(index + q.length)}
-    </>
-  );
-}
 
 /**
  * 会话行渲染器：条目多时走虚拟滚动，少时直接全量渲染。

@@ -9,7 +9,7 @@
  * 之所以不把 IPC 调用散进各组件：技术方案 9.3 要求"写操作先走 IPC 成功后再更新
  * 本地投影"。集中之后，"先 IPC 再更新"这条顺序在代码里是可见的。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import type {
   AppDiagnostics,
@@ -82,8 +82,6 @@ export function App(): JSX.Element {
     Record<string, ProviderTestResult>
   >({});
 
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === chat.conversationId) ?? null,
     [conversations, chat.conversationId],
@@ -134,7 +132,7 @@ export function App(): JSX.Element {
         tags: patch.tags,
       });
       if (!result.ok) return result.error.message;
-      await refreshCharacters(useAppStore.getState().query || undefined);
+      await refreshCharacters();
       toast('角色卡已保存');
       return null;
     },
@@ -680,12 +678,6 @@ export function App(): JSX.Element {
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
 
-      if (mod && key === 'k') {
-        event.preventDefault();
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-        return;
-      }
       if (mod && key === 'n') {
         event.preventDefault();
         openNewConversation();
@@ -769,7 +761,6 @@ export function App(): JSX.Element {
           '人设选项',
         );
       }}
-      searchInputRef={searchInputRef}
     />
   );
 
@@ -878,7 +869,7 @@ export function App(): JSX.Element {
             onToggleFavorite={(character) => {
               void (async () => {
                 await api().characters.update(character.id, { favorite: !character.favorite });
-                await refreshCharacters(useAppStore.getState().query || undefined);
+                await refreshCharacters();
               })();
             }}
             onDelete={(character) => {

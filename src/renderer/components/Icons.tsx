@@ -41,12 +41,6 @@ export const Icons = {
       <path d="m5 12.5 4.5 4.5L19 7" strokeWidth={2.2} />
     </Svg>
   ),
-  search: (p: IconProps = {}) => (
-    <Svg {...p}>
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </Svg>
-  ),
   sidebar: (p: IconProps = {}) => (
     <Svg {...p}>
       <rect x="3" y="4" width="18" height="16" rx="2" />
