@@ -146,6 +146,21 @@
 .char-card {
   display: flex;
   flex-direction: column;
+  /*
+   * align-items 必须**显式**写 stretch，不能靠默认值。
+   *
+   * Chromium 的 UA 样式表给 button 那一堆属性里除了 `text-align: center`、
+   * `padding`、`border`，还有一条 `align-items: flex-start`。前三样这里都覆盖了，
+   * 唯独漏了这一条——于是 flex-start 下 flex 项的宽度退化成 fit-content。
+   * 名字是 `white-space: nowrap` 的，而 nowrap 文本的 min-content **就等于整串名字**，
+   * 所以名字框被撑到整串名字那么宽、捅出卡片，糊在右边那张卡的名字上面。
+   * 那种情况下连 `overflow: hidden` 也救不了：框本身已经比卡片宽了，
+   * 文字在框内是"放得下"的，没有东西可裁。
+   *
+   * （同一个坑 `char-card-figure` 早就踩过，它靠 `width: 100%` 绕开的；
+   *   这里从根上把对齐写了，figure 那条 width 就只是冗余而不是救命稻草。）
+   */
+  align-items: stretch;
   gap: var(--space-2);
   padding: 0;
   border: none;
@@ -212,6 +227,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /*
+   * min-width: 0 是上面那行省略号**真正生效的前提**。
+   *
+   * flex 项默认 `min-width: auto`，其取值是内容的 min-content 尺寸；而 nowrap
+   * 文本的 min-content 恰好就是整串名字。不把它压到 0，最小尺寸就会把框顶回
+   * "整串名字那么宽"，`overflow: hidden` + `text-overflow: ellipsis` 永远没机会
+   * 出现——实测的表现就是名字横穿到右边那张卡上。
+   * （`.char-card` 自己也有 min-width: 0，那是给网格轨道用的，管不到这里的子项。）
+   */
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* ---- 分类标签（角色详情弹窗里只读展示） ---- */
