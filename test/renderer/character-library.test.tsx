@@ -82,9 +82,20 @@ describe('角色库卡片网格', () => {
     expect(view.container.querySelector('.char-card-placeholder')).toBeNull();
   });
 
-  it('收藏的卡片上带星标', () => {
+  it('收藏的卡片上带星标，且是实心 SVG 而不是文本字形', () => {
     setup({ characters: [makeCharacter({ favorite: true })] });
-    expect(screen.getByTitle('已收藏')).toBeTruthy();
+    const badge = screen.getByTitle('已收藏');
+    /*
+     * 文本 `★` 与内联 SVG 图标不是一套体系（字形来自系统字体，线宽比例都对不上），
+     * 而且没有底盘时压在卡面图上会被吃掉。判据是"里面是个 svg、文本内容为空"。
+     */
+    expect(badge.querySelector('svg')).not.toBeNull();
+    expect(badge.textContent).toBe('');
+  });
+
+  it('未收藏的卡片上不出现角标', () => {
+    setup({ characters: [makeCharacter({ favorite: false })] });
+    expect(screen.queryByTitle('已收藏')).toBeNull();
   });
 
   it('标签筛选点击后按标签过滤（筛选逻辑仍走主进程回调）', async () => {
@@ -241,7 +252,7 @@ describe('收藏状态在弹窗里看得见', () => {
     expect(starFill(button)).toBeNull();
   });
 
-  it('已收藏：实心星 + 常驻暖色，且 aria-pressed=true', async () => {
+  it('已收藏：实心星 + 常驻收藏色，且 aria-pressed=true', async () => {
     const user = userEvent.setup();
     setup({ characters: [makeCharacter({ favorite: true })] });
     await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));

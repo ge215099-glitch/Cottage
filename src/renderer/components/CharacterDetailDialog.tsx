@@ -105,8 +105,9 @@ export function CharacterDetailDialog({
               <h3>
                 {character.name}
                 {character.favorite ? (
+                  // 与卡片角标、右侧按钮同一个实心星；此前这里是与字体绑定的文本 `★`
                   <span className="fav" title="已收藏">
-                    ★
+                    {Icons.starFilled({ size: 12 })}
                   </span>
                 ) : null}
               </h3>

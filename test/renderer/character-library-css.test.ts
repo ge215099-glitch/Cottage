@@ -26,9 +26,13 @@ import { describe, expect, it } from 'vitest';
 const repoRoot = process.cwd();
 
 const PAGES_CSS = 'src/renderer/styles/pages.css';
+const OVERLAYS_CSS = 'src/renderer/styles/overlays.css';
+const TOKENS_CSS = 'src/renderer/styles/tokens.css';
 const DESIGN_DOC = 'docs/ui-design-sidebar-chat.md';
 
 const css = readFileSync(path.join(repoRoot, PAGES_CSS), 'utf8');
+const overlays = readFileSync(path.join(repoRoot, OVERLAYS_CSS), 'utf8');
+const tokens = readFileSync(path.join(repoRoot, TOKENS_CSS), 'utf8');
 const doc = readFileSync(path.join(repoRoot, DESIGN_DOC), 'utf8');
 
 /** 去掉 CSS 块注释：注释里也会提到这些属性名，不能当成规则命中。 */
@@ -55,7 +59,12 @@ function declarations(body: string): Map<string, string> {
 }
 
 function propsOf(selector: string): Map<string, string> {
-  const body = ruleBody(css, selector);
+  return propsIn(css, selector);
+}
+
+/** 从任意样式表里取某个选择器的属性表。 */
+function propsIn(text: string, selector: string): Map<string, string> {
+  const body = ruleBody(text, selector);
   expect(body, `样式表里找不到 ${selector}`).not.toBeNull();
   return declarations(body!);
 }
@@ -92,5 +101,50 @@ describe('卡片名字超长只省略，不糊到邻卡上', () => {
 describe('设计文档与实现同源', () => {
   it('文档写明卡片名字是单行省略', () => {
     expect(doc).toMatch(/名字[^\n]{0,20}单行省略/);
+  });
+
+  it('文档写明收藏角标是深色胶囊 + 实心 SVG 星', () => {
+    expect(doc).toMatch(/角标[^\n]{0,40}(胶囊|`--badge-scrim`)[^\n]{0,20}(实心|svg)/i);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 收藏角标：深色胶囊 + 实心 SVG 星（不是压在卡面图上的文本 ★）            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 角标此前是**文本字符** `★`（12px / `--warn` 橙 / 只有 text-shadow）：
+ * 字形来自系统字体、与全应用的内联 SVG 图标不是一套；没有底盘，卡面一花就被吃掉；
+ * 而且 `--warn` 在本项目里是警告色，拿它表达收藏是语义串台。
+ *
+ * 组件测试只能验到"里面是个 svg、文本为空"（见 character-library.test.tsx），
+ * "有没有底盘、什么颜色" 只能在样式文本上验——所以这一组留在这里。
+ */
+describe('收藏角标是"胶囊 + 实心 SVG 星"', () => {
+  it('.char-card-fav 是绝对定位的深色胶囊 + 专供深色底的星色', () => {
+    const props = propsOf('.char-card-fav');
+    expect(props.get('position')).toBe('absolute');
+    expect(props.get('background')).toBe('var(--badge-scrim)');
+    expect(props.get('color')).toBe('var(--favorite-on-badge)');
+  });
+
+  it('角标不再借用语义为"警告"的 --warn', () => {
+    const props = propsOf('.char-card-fav');
+    expect(props.get('color')).not.toContain('--warn');
+    // text-shadow 是"没有底色时硬撑可读性"的补丁，有了胶囊就不该再留着
+    expect(props.has('text-shadow')).toBe(false);
+  });
+
+  it('详情弹窗的星按钮用 --favorite，而不是 --warn', () => {
+    expect(propsIn(overlays, '.icon-btn.fav-on').get('color')).toBe('var(--favorite)');
+  });
+
+  it('收藏 token 在浅色与深色两套主题里都有取值', () => {
+    const light = declarations(ruleBody(tokens, ':root')!);
+    const dark = declarations(ruleBody(tokens, "html[data-theme='dark']")!);
+    for (const name of ['--favorite', '--favorite-on-badge', '--badge-scrim']) {
+      expect(light.get(name), `:root 缺少 ${name}（浅色主题会取不到值）`).toBeDefined();
+      expect(dark.get(name), `深色主题缺少 ${name}`).toBeDefined();
+    }
   });
 });

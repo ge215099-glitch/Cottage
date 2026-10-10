@@ -114,7 +114,7 @@
 }
 
 .card-name .fav {
-  color: var(--warn);
+  color: var(--favorite);
   font-size: var(--font-size-meta);
 }
 
@@ -211,13 +211,36 @@
   border-color: var(--text-tertiary);
 }
 
+/*
+ * 已收藏角标：深色半透明小胶囊 + 实心 SVG 星。
+ *
+ * 此前是一个**文本字符** `★`（12px、`--warn` 橙、只有 text-shadow），三个问题：
+ *   1. 字形来自系统字体，与全应用那套 24×24 / 1.7px 描边的内联 SVG 图标不是一套；
+ *   2. 没有底色，直接压在卡面图上——卡面一花就被吃掉，卡面一亮又糊成一个橙点；
+ *   3. `--warn` 在本项目里是**警告色**，拿它表达收藏是语义串台。
+ * 现在胶囊给一层稳定的深色底（`--badge-scrim`），星色用专供深色底的 `--favorite-on-badge`，
+ * 因此不管卡面是黑是白、是花是纯，角标都读得出来，形状也与其他图标一致。
+ *
+ * 尺寸 22px、内缩 6px：6px 取卡片圆角（12px）的一半，胶囊与圆角弧线视觉等距。
+ * 用 `--space-1`(4px) 会显得贴边，`--space-2`(8px) 又太靠里，两个 token 都不合适。
+ */
 .char-card-fav {
   position: absolute;
-  top: var(--space-1);
-  right: var(--space-2);
-  font-size: var(--font-size-meta);
-  color: var(--warn);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--badge-scrim);
+  color: var(--favorite-on-badge);
+  /* 卡面细节透过胶囊会干扰认读，模糊一层让底盘更稳 */
+  backdrop-filter: blur(3px);
+}
+
+.char-card-fav svg {
+  display: block;
 }
 
 .char-card-name {

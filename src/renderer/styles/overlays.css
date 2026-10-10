@@ -321,7 +321,9 @@
 
 .char-detail-info h3 .fav {
   font-size: var(--font-size-meta);
-  color: var(--warn);
+  color: var(--favorite);
+  display: inline-flex;
+  align-items: center;
 }
 
 .char-detail-tags {
@@ -351,14 +353,15 @@
 }
 
 /*
- * 已收藏的星按钮：实心图标 + 常驻暖色。
+ * 已收藏的星按钮：实心图标 + 常驻 `--favorite`。
  *
  * 只换图标是不够的——16px 的空心/实心差别在扫视时很容易漏掉，而"收藏"是一个
  * **持续状态**（不是一次性动作），状态就该常驻可见，所以这里不着眼于 hover，
- * 而是让按钮本身一直带着颜色。
+ * 而是让按钮本身一直带着颜色。用 `--favorite` 而不是 `--warn`：橙色在本项目里
+ * 表示"警告"（密钥存储降级、超阈值），收藏不是警告。
  */
 .icon-btn.fav-on {
-  color: var(--warn);
+  color: var(--favorite);
 }
 
 .char-detail-body {

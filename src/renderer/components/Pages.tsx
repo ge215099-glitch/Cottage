@@ -157,8 +157,14 @@ export function CharactersPage({
                       <span className="char-card-placeholder" aria-hidden="true" />
                     )}
                     {character.favorite ? (
+                      /*
+                       * 用实心 SVG 星，不用文本 `★`：文本星的字形来自系统字体，
+                       * 与全应用的内联 SVG 图标不是一套（线宽、比例都对不上），
+                       * 而且没有底色时压在花哨的卡面图上会被吃掉。形状与详情弹窗
+                       * 的收藏按钮共用 `Icons.starFilled`，两处永远一致。
+                       */
                       <span className="char-card-fav" title="已收藏" aria-hidden="true">
-                        ★
+                        {Icons.starFilled({ size: 12 })}
                       </span>
                     ) : null}
                   </span>
