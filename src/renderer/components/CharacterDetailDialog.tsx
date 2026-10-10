@@ -131,14 +131,22 @@ export function CharacterDetailDialog({
                 <button type="button" className="btn" onClick={onEdit}>
                   编辑
                 </button>
+                {/*
+                 * 图标必须跟着状态走：空心 = 未收藏、实心 = 已收藏。
+                 *
+                 * 这里此前**两种状态都画空心星**，于是"收藏了没有"在按钮上完全看不出来，
+                 * 用户点完只能靠标题栏里那个小星去猜有没有生效——等于没有反馈。
+                 * `aria-pressed` 一并给出，读屏用户和视觉用户拿到的是同一个事实。
+                 */}
                 <button
                   type="button"
-                  className="icon-btn"
+                  className={character.favorite ? 'icon-btn fav-on' : 'icon-btn'}
                   title={character.favorite ? '取消收藏' : '收藏'}
                   aria-label={character.favorite ? '取消收藏' : '收藏'}
+                  aria-pressed={character.favorite}
                   onClick={onToggleFavorite}
                 >
-                  {Icons.star()}
+                  {character.favorite ? Icons.starFilled() : Icons.star()}
                 </button>
                 <button
                   type="button"

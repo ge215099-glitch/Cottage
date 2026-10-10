@@ -350,6 +350,17 @@
   background: var(--danger-bg);
 }
 
+/*
+ * 已收藏的星按钮：实心图标 + 常驻暖色。
+ *
+ * 只换图标是不够的——16px 的空心/实心差别在扫视时很容易漏掉，而"收藏"是一个
+ * **持续状态**（不是一次性动作），状态就该常驻可见，所以这里不着眼于 hover，
+ * 而是让按钮本身一直带着颜色。
+ */
+.icon-btn.fav-on {
+  color: var(--warn);
+}
+
 .char-detail-body {
   margin-top: var(--space-4);
   overflow-y: auto;

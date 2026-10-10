@@ -12,6 +12,8 @@
  * 在这里只能验到"渲染了对应元素与类名"，真实比例要靠 CDP 截图与 E2E。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
+import type { JSX } from 'react';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -204,5 +206,86 @@ describe('角色详情弹窗', () => {
     useMenuStore.getState().close();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 收藏的视觉反馈                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 这一组用例钉的是一个**真实报上来的 bug**：在详情弹窗里点了「收藏」，
+ * 图标没有任何变化（空心还是空心），用户不知道自己点没点上。
+ *
+ * 根因是按钮**两种状态都渲染同一个空心星**，`title` / `aria-label` 虽然换了文案，
+ * 但那只有悬停/读屏才看得见。所以这里的判据是"视觉契约"：
+ * 未收藏 = 空心 svg（无 fill），已收藏 = 实心 svg（`fill="currentColor"`）+ 常驻暖色类名，
+ * 并且 `aria-pressed` 与之一致——读屏用户和视觉用户拿到同一个事实。
+ */
+describe('收藏状态在弹窗里看得见', () => {
+  /** 取星标按钮里那个 svg 的填充色：`null` = 空心。 */
+  function starFill(button: HTMLElement): string | null {
+    const path = button.querySelector('path');
+    expect(path, '星标按钮里必须有一个 path，否则图标没了').not.toBeNull();
+    return path!.getAttribute('fill');
+  }
+
+  it('未收藏：空心星，且 aria-pressed=false', async () => {
+    const user = userEvent.setup();
+    setup({ characters: [makeCharacter({ favorite: false })] });
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+
+    const button = within(screen.getByRole('dialog')).getByRole('button', { name: '收藏' });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.className).not.toContain('fav-on');
+    expect(starFill(button)).toBeNull();
+  });
+
+  it('已收藏：实心星 + 常驻暖色，且 aria-pressed=true', async () => {
+    const user = userEvent.setup();
+    setup({ characters: [makeCharacter({ favorite: true })] });
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+
+    const button = within(screen.getByRole('dialog')).getByRole('button', { name: '取消收藏' });
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.className).toContain('fav-on');
+    expect(starFill(button)).toBe('currentColor');
+  });
+
+  it('点一下「收藏」星立刻变实心，再点一下变回空心', async () => {
+    const user = userEvent.setup();
+
+    /*
+     * 受控外壳：回调把 `favorite` 翻过来再渲染，模拟 App 里"更新后重新拉列表"
+     * 这一步。直接给 `vi.fn()` 的话 props 永远不变，这个 bug 在测试里就隐身了——
+     * 而线上真正坏掉的正是"点了之后界面没跟上"。
+     */
+    function Harness(): JSX.Element {
+      const [character, setCharacter] = useState(makeCharacter({ favorite: false }));
+      return (
+        <CharactersPage
+          characters={[character]}
+          tags={[{ tag: '奇幻', count: 1 }]}
+          onImportFile={vi.fn()}
+          onSearch={vi.fn()}
+          onToggleFavorite={() => setCharacter((prev) => ({ ...prev, favorite: !prev.favorite }))}
+          onDelete={vi.fn()}
+          onExport={vi.fn()}
+          onNewConversation={vi.fn()}
+          onSave={vi.fn()}
+        />
+      );
+    }
+
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '收藏' }));
+    const onButton = within(screen.getByRole('dialog')).getByRole('button', { name: '取消收藏' });
+    expect(starFill(onButton)).toBe('currentColor');
+
+    await user.click(onButton);
+    const offButton = within(screen.getByRole('dialog')).getByRole('button', { name: '收藏' });
+    expect(starFill(offButton)).toBeNull();
   });
 });

@@ -9,6 +9,9 @@ import type { JSX } from 'react';
 
 type IconProps = { size?: number };
 
+/** 五角星的外形（空心与实心共用，见 `star` / `starFilled`）。 */
+const STAR_PATH = 'm12 4 2.4 5 5.6.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.6-.8Z';
+
 function Svg({ size = 16, children }: IconProps & { children: React.ReactNode }): JSX.Element {
   return (
     <svg
@@ -162,7 +165,18 @@ export const Icons = {
   ),
   star: (p: IconProps = {}) => (
     <Svg {...p}>
-      <path d="m12 4 2.4 5 5.6.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.6-.8Z" />
+      <path d={STAR_PATH} />
+    </Svg>
+  ),
+  /**
+   * 已收藏的星：同一条路径，只是**填实**。
+   *
+   * 空心/实心必须是同一个形状，否则"收藏了没有"看起来像两个不同的图标；
+   * 共用 `STAR_PATH` 让这两者永远不可能画歪。
+   */
+  starFilled: (p: IconProps = {}) => (
+    <Svg {...p}>
+      <path d={STAR_PATH} fill="currentColor" />
     </Svg>
   ),
   download: (p: IconProps = {}) => (
