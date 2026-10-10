@@ -280,7 +280,7 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* ③ 固定导航：当前项 = 浅填充 + 左 2px 强调条，图标不着色 */}
+      {/* ③ 固定导航：当前项 = 浅填充（无左侧强调条，项间留 4px 缝，见 sidebar.css） */}
       <nav className="nav" aria-label="主导航">
         {NAV_ITEMS.map((item) => (
           <button

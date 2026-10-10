@@ -112,7 +112,15 @@
   padding: 0 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  /*
+   * 项间留白 4px（P4「状态靠填充，不靠描边」的落地）。
+   *
+   * 之前这里是 1px：项紧挨着，选中项的填充块和邻居糊成一片，
+   * 于是只能再画一条左侧 2px 强调条来"指认"当前项。现在反过来——
+   * 项与项之间留出可见的缝，相邻项不再共享边界，当前项靠一层更深的填充
+   * 就能看清，那条竖线（连同"两行之间的线"的错觉）一起删掉。
+   */
+  gap: 4px;
   flex: 0 0 auto;
   border-bottom: 1px solid var(--border-subtle);
   margin-bottom: 8px;
@@ -135,20 +143,11 @@
   background: var(--surface-hover);
 }
 
-/* 选中 = 浅填充 + 左侧 2px 强调条；图标本身不着色（P5） */
+/* 选中 = 浅填充；图标本身不着色（P5）。
+ * 刻意**没有**左侧强调条：状态只用填充层级表达（P4），
+ * 前后各留出的缝已经足够把当前项与邻居分开。 */
 .nav-item.active {
   background: var(--surface-active);
-}
-
-.nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent-soft);
 }
 
 .nav-item svg {
@@ -191,6 +190,23 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 8px 12px;
+  display: flex;
+  flex-direction: column;
+  /* 行与行之间留 4px 缝：两行不共享边界，选中行的填充块自己成形，
+   * 不需要左侧 2px 强调条来指认（与 ③ 导航同一套口径）。 */
+  gap: 4px;
+}
+
+/*
+ * 虚拟滚动态下 `gap` 够不着行。
+ *
+ * `.conv-list` 的 gap 只作用于直接子元素，而 VirtualRowList 在超过阈值时
+ * 会把所有行装进**一个**绝对定位的盒子（`data-index` 定位、行距由 JS 的
+ * 行高算出），所以那层里面必须自己补回同样的 4px——否则列表一旦过 40 条，
+ * 行距会突然从 4px 变成 0，"两块之间有一定间距"这件事在长列表上失效。
+ */
+.conv-list [data-index] {
+  margin-bottom: 4px;
 }
 
 /* 只有「已置顶」段有标题；其余会话不分组（UI 文档 5.1） */
@@ -227,17 +243,6 @@
 
 .conv-row.active {
   background: var(--surface-active);
-}
-
-.conv-row.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent-soft);
 }
 
 .conv-title {
