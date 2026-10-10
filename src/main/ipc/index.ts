@@ -9,13 +9,14 @@
  *   3. **错误统一成 NormalizedError**：handler 抛异常不会打穿到 renderer，
  *      而是变成 `{ ok: false, error }`，逼迫 UI 处理失败分支。
  */
-import { dialog, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { ALL_INVOKE_CHANNELS, EVENT, INVOKE } from '@shared/ipc.js';
 import type { Result } from '@shared/api.js';
 import type { NormalizedError } from '@shared/types.js';
 import { CharacterCardError, cardDisplayName } from '@core/character-card.js';
+import { PngCardError } from '@core/png-card.js';
 import { makeError } from '@core/providers/errors.js';
 import type { AppContext } from '../context.js';
 import { abortConversation, emitEvent } from '../context.js';
@@ -71,8 +72,32 @@ export function setAppVersion(version: string): void {
   appVersion = version;
 }
 
-/** 结构化错误 → 对外错误码。 */
-function toNormalizedError(err: unknown): NormalizedError {
+/**
+ * 当前主窗口；由主进程入口注入（同样是为了避免循环 import）。
+ *
+ * 用途只有一个：**让原生文件对话框归主窗口所有**。不给 `parent` 时，Windows 上那个
+ * 对话框既不是模态、也不属于任何窗口——用户能继续点应用里的按钮，于是连点几次就叠出
+ * 好几个对话框，关掉一个还有下一个，表现就是"卡住了动不了"。
+ */
+let mainWindowRef: BrowserWindow | null = null;
+export function setMainWindow(window: BrowserWindow | null): void {
+  mainWindowRef = window;
+}
+
+/** 取一个还活着的窗口当对话框的 parent；没有就返回 undefined（对话框仍能弹）。 */
+function dialogParent(): BrowserWindow | undefined {
+  const window = mainWindowRef;
+  if (window && !window.isDestroyed()) return window;
+  return BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+}
+
+/**
+ * 结构化错误 → 对外错误码。
+ *
+ * 导出是为了让单元测试能直接断言映射表：这些分支决定用户在界面上看到哪个错误码，
+ * 而"少判一个错误类"的后果是静默降级成 `UNKNOWN`（文案还在，但 UI 没法据此分支）。
+ */
+export function toNormalizedError(err: unknown): NormalizedError {
   if (err instanceof ContextError) {
     const map: Record<ContextError['code'], NormalizedError['code']> = {
       NOT_FOUND: 'NOT_FOUND',
@@ -95,6 +120,14 @@ function toNormalizedError(err: unknown): NormalizedError {
     return makeError(code, err.message);
   }
   if (err instanceof ProviderTestError) return makeError('INVALID_REQUEST', err.message);
+  /*
+   * PNG 卡解析失败也要走 VALIDATION_ERROR，并带上那句可读原因。
+   *
+   * `PngCardError` 不是 `CharacterCardError` 的子类（一个管 PNG 容器、一个管卡 JSON），
+   * 漏掉这一条就会掉进最后的兜底分支变成 `UNKNOWN`——用户看到的还是同一句话，
+   * 但错误码错了，UI 就没法按"这个文件不行，换一个"来分支处理。
+   */
+  if (err instanceof PngCardError) return makeError('VALIDATION_ERROR', err.message);
   if (err instanceof CharacterCardError) return makeError('VALIDATION_ERROR', err.message);
   if (err instanceof z.ZodError) {
     return makeError(
@@ -247,7 +280,14 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
   handlers.set(
     INVOKE.charactersImportFile,
     validated(noArgs, async () => {
+      /*
+       * 有主窗口就**挂上去并设成模态**：用户在"选文件"的这几秒里点不到「导入角色卡」，
+       * 也就叠不出第二个对话框（实测过的卡死来源）。
+       * 没有窗口时退回不带 parent 的写法，对话框照样能弹。
+       */
+      const parent = dialogParent();
       const picked = await dialog.showOpenDialog({
+        ...(parent ? { parent, modal: true } : {}),
         title: '导入角色卡',
         properties: ['openFile'],
         filters: [

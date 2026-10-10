@@ -11,6 +11,8 @@
  *   - 启动清扫把残留 streaming 改成 interrupted（验收项 10）
  */
 import { beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { DatabaseDriver } from '../src/main/db/driver.js';
 import * as characters from '../src/main/db/dao/characters.js';
 import * as conversations from '../src/main/db/dao/conversations.js';
@@ -629,6 +631,55 @@ describe('角色 DAO', () => {
   it('角色名不能改成空', () => {
     const id = characters.importCharacter(db, { data: { name: 'A' } }, T0).character.id;
     expect(() => characters.updateCharacter(db, id, { name: '  ' }, T0 + 1)).toThrow(/不能为空/);
+  });
+
+  /**
+   * 回归锚点：**列角色的查询不得带 `raw_json`**。
+   *
+   * `raw_json` 是整张卡的原始 JSON（世界书都在里面，真实卡实测 110 KB～600 KB），
+   * 界面根本用不到它——只有导出要。带上它意味着角色库**每次刷新**都要把每张卡的
+   * 原始 JSON 从磁盘读出来、进内存、再随 IPC 抄一份；而角色库在导入后会立刻刷新一次，
+   * 所以卡越多，导入越慢，最后看起来就是导入时卡死。
+   *
+   * 判据分三层，因为"返回值里没有 rawJson"这种断言其实证明不了什么（字段本来就没被映射）：
+   *   1. 列清单（两处 SQL 共用的那个常量）里不许出现 raw_json；
+   *   2. 列表 / 单条读取照常可用；
+   *   3. 导出这条路必须仍然无损——它才是 raw_json 的唯一消费者。
+   */
+  it('列表与单条查询都不读 raw_json，但导出依然拿得到原卡', () => {
+    // 1) 静态：列清单里不许有 raw_json
+    const source = readFileSync(
+      path.join(process.cwd(), 'src/main/db/dao/characters.ts'),
+      'utf8',
+    );
+    const columns = /const SELECT_COLUMNS = `([\s\S]*?)`/.exec(source)?.[1];
+    expect(columns, '没能从 characters.ts 里找到 SELECT_COLUMNS').toBeTruthy();
+    expect(columns).not.toContain('raw_json');
+
+    const id = characters.importCharacter(
+      db,
+      {
+        spec: 'chara_card_v3',
+        data: { name: '世界书角色', description: '描述', character_book: { entries: [{ name: '设定' }] } },
+      },
+      T0,
+    ).character.id;
+
+    // 2) 读取照常，且对外形状里没有 raw_json
+    const one = characters.getCharacter(db, id)!;
+    expect(one.name).toBe('世界书角色');
+    expect(one).not.toHaveProperty('rawJson');
+    expect(characters.listCharacters(db).map((c) => c.name)).toContain('世界书角色');
+
+    // 3) 导出这条路必须仍然无损
+    const raw = characters.getCharacterRawJson(db, id)!;
+    expect((raw.data as Record<string, unknown>)['character_book']).toEqual({
+      entries: [{ name: '设定' }],
+    });
+    const exported = characters.exportCharacter(db, id)!;
+    expect((exported.data as Record<string, unknown>)['character_book']).toEqual({
+      entries: [{ name: '设定' }],
+    });
   });
 
   it('被会话引用的角色不允许删除，并给出可读原因', () => {

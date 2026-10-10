@@ -9,7 +9,7 @@
  * 之所以不把 IPC 调用散进各组件：技术方案 9.3 要求"写操作先走 IPC 成功后再更新
  * 本地投影"。集中之后，"先 IPC 再更新"这条顺序在代码里是可见的。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type {
   AppDiagnostics,
@@ -407,6 +407,54 @@ export function App(): JSX.Element {
       );
     },
     [runCharacterExport],
+  );
+
+  /* ------------------------------ 角色卡导入 ------------------------------ */
+
+  /**
+   * 导入角色卡。
+   *
+   * **必须防重入**（`importing` 状态 + `importingRef` 同步闸门），两个理由都是实测到的：
+   *   1. 主进程那条通道会**弹一个原生文件对话框**，而 `dialog.showOpenDialog` 是异步的。
+   *      用户在"点了没反应"的几秒里连点几次，就会叠出好几个对话框——原生对话框在
+   *      Windows 上会模态地霸占输入，叠起来之后关掉一个还有下一个，看起来就是"卡死动不了"。
+   *   2. 每次调用都会真的导一次（`characters:import-file` 没有去重语义），连点几下就
+   *      多出好几张一模一样的卡，还得各自落一份头像文件。
+   *
+   * `importingRef` 用 ref 而不是只靠 state：State 更新是异步的，连点发生在同一帧内时
+   * 状态还没变，闸门必须同步生效。状态则负责把按钮禁用掉，让用户看得见"正在进行"。
+   */
+  const [importing, setImporting] = useState(false);
+  const importingRef = useRef(false);
+
+  const importCharacterFile = useCallback(async () => {
+    if (importingRef.current) return;
+    importingRef.current = true;
+    setImporting(true);
+    try {
+      const result = await api().characters.importFile();
+      if (!result.ok) {
+        toast(result.error.message, 'error');
+        return;
+      }
+      if (!result.data) return; // 用户取消，不是失败
+      await refreshCharacters();
+      toast(`已导入「${result.data.character.name}」`);
+    } finally {
+      importingRef.current = false;
+      setImporting(false);
+    }
+  }, [refreshCharacters]);
+
+  /**
+   * 角色库搜索。
+   *
+   * 用 `useCallback` 定住身份：`CharactersPage` 的搜索 effect 依赖它，
+   * 内联箭头函数会在每次渲染都换一个身份，把"query 变了才搜索"变成"每渲染都搜索"。
+   */
+  const searchCharacters = useCallback(
+    (search: string) => void refreshCharacters(search || undefined),
+    [refreshCharacters],
   );
 
   /* ------------------------------ API Key（导航模块） ------------------------------ */
@@ -853,19 +901,9 @@ export function App(): JSX.Element {
           <CharactersPage
             characters={characters}
             tags={tags}
-            onImportFile={() => {
-              void (async () => {
-                const result = await api().characters.importFile();
-                if (!result.ok) {
-                  toast(result.error.message, 'error');
-                  return;
-                }
-                if (!result.data) return; // 用户取消
-                await refreshCharacters();
-                toast(`已导入「${result.data.character.name}」`);
-              })();
-            }}
-            onSearch={(search) => void refreshCharacters(search || undefined)}
+            importing={importing}
+            onImportFile={() => void importCharacterFile()}
+            onSearch={searchCharacters}
             onToggleFavorite={(character) => {
               void (async () => {
                 await api().characters.update(character.id, { favorite: !character.favorite });

@@ -36,6 +36,7 @@ function setup(overrides: Partial<CharactersPageProps> = {}) {
       makeCharacter({ id: 'chr_2', name: '老周', description: '修表铺的老板。' }),
     ],
     tags: [{ tag: '奇幻', count: 1 }],
+    importing: false,
     onImportFile: vi.fn(),
     onSearch: vi.fn(),
     onToggleFavorite: vi.fn(),
@@ -103,6 +104,157 @@ describe('角色库卡片网格', () => {
     const { props } = setup();
     await user.click(screen.getByRole('button', { name: /奇幻/ }));
     expect(props.onSearch).toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 导入按钮：不能连点、也不能看着像没反应                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 这一组钉的是一个**真实报上来的 bug**：点「导入角色卡」之后有几秒没有任何反馈，
+ * 用户于是连点；而这条通道每次调用都会弹一个**原生文件对话框**，几下就叠出好几个，
+ * 关掉一个还有下一个，看起来就是"卡死动不了"（每次调用还会真的导入一张重复的卡）。
+ *
+ * 修法是两条一起上，缺一条都不够：
+ *   1. 导入期间按钮 **disabled + 文案换成「正在导入…」**（用户看得见，也就不会连点）；
+ *   2. App 侧一个**同步的重入闸门**（state 更新是异步的，同一帧内的连点必须被同步挡住），
+ *      这里用"disabled 的按钮点不动"来验第 2 条在 UI 层的表现。
+ */
+describe('导入角色卡的按钮状态', () => {
+  it('空闲时按钮可点，点下去调到导入回调', async () => {
+    const user = userEvent.setup();
+    const { props } = setup({ importing: false });
+    const button = screen.getByRole('button', { name: '导入角色卡' });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+
+    await user.click(button);
+    expect(props.onImportFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('导入中：按钮禁用、写成「正在导入…」，再点也调不动', async () => {
+    const user = userEvent.setup();
+    const { props } = setup({ importing: true });
+
+    // 文案要说清在等什么，不能只是变灰
+    const button = screen.getByRole('button', { name: '正在导入…' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+
+    await user.click(button);
+    expect(props.onImportFile).not.toHaveBeenCalled();
+  });
+
+  it('导入结束后按钮恢复可用（不会永久卡在禁用态）', async () => {
+    const user = userEvent.setup();
+    const props = {
+      characters: [makeCharacter()],
+      tags: [],
+      importing: true,
+      onImportFile: vi.fn(),
+      onSearch: vi.fn(),
+      onToggleFavorite: vi.fn(),
+      onDelete: vi.fn(),
+      onExport: vi.fn(),
+      onNewConversation: vi.fn(),
+      onSave: vi.fn(async () => null),
+    } satisfies CharactersPageProps;
+
+    const view = render(<CharactersPage {...props} />);
+    view.rerender(<CharactersPage {...props} importing={false} />);
+
+    const button = screen.getByRole('button', { name: '导入角色卡' });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    await user.click(button);
+    expect(props.onImportFile).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 搜索 effect 只能因为 query 变化而跑，不能因为回调换身份而跑             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 这一组钉的是"角色库越用越卡、最后整页没反应"的根因。
+ *
+ * `onSearch` 是 App 传下来的内联箭头函数，**每次渲染都是新身份**。effect 的依赖数组
+ * 里放了它，就变成"渲染 → 跑 effect → 搜索 → 主进程返回新数组 → setState → 渲染"
+ * 的死循环：页面持续发 IPC、持续重渲染，用户点什么都没反应。真卡的 `raw_json`
+ * 一张就 110 KB～600 KB，这个循环还要把它们来回搬，所以是"点一下导入直接卡死"。
+ *
+ * 判据：**每次渲染都换一个新的 `onSearch` 身份**，effect 也只该跑初始那一次。
+ */
+describe('搜索 effect 不被回调身份牵着走', () => {
+  it('父组件每次渲染都给新回调，effect 也不会重复触发', async () => {
+    const calls: string[] = [];
+
+    function Harness(): JSX.Element {
+      const [tick, setTick] = useState(0);
+      return (
+        <div>
+          {/* 每次点击都强制父组件重新渲染 → onSearch 换新身份 */}
+          <button type="button" onClick={() => setTick((t) => t + 1)}>
+            重新渲染 {tick}
+          </button>
+          <CharactersPage
+            characters={[makeCharacter()]}
+            tags={[]}
+            importing={false}
+            onImportFile={() => undefined}
+            // 与 App.tsx 同样的写法：内联箭头函数，身份每帧都变
+            onSearch={(search) => calls.push(search)}
+            onToggleFavorite={() => undefined}
+            onDelete={() => undefined}
+            onExport={() => undefined}
+            onNewConversation={() => undefined}
+            onSave={async () => null}
+          />
+        </div>
+      );
+    }
+
+    const user = userEvent.setup();
+    render(<Harness />);
+    expect(calls).toEqual(['']);
+
+    // 逼父组件重渲染 3 次：每次都会给 onSearch 一个新身份
+    for (let i = 0; i < 3; i += 1) {
+      await user.click(screen.getByRole('button', { name: /重新渲染/ }));
+    }
+    await waitFor(() => expect(calls).toEqual(['']));
+
+    // 但 query 真的变了时必须重新搜索（别把功能一起修没了）
+    await user.type(screen.getByLabelText('搜索角色'), '林');
+    await waitFor(() => expect(calls[calls.length - 1]).toBe('林'));
+  });
+
+  it('保持调用的总是最新的那个回调（不是首帧捕获的旧闭包）', async () => {
+    const seen: string[] = [];
+
+    function Harness({ tag }: { tag: string }): JSX.Element {
+      return (
+        <CharactersPage
+          characters={[makeCharacter()]}
+          tags={[]}
+          importing={false}
+          onImportFile={() => undefined}
+          onSearch={(search) => seen.push(`${tag}:${search}`)}
+          onToggleFavorite={() => undefined}
+          onDelete={() => undefined}
+          onExport={() => undefined}
+          onNewConversation={() => undefined}
+          onSave={async () => null}
+        />
+      );
+    }
+
+    const user = userEvent.setup();
+    const view = render(<Harness tag="第一版" />);
+    view.rerender(<Harness tag="第二版" />);
+
+    await user.type(screen.getByLabelText('搜索角色'), 'A');
+    // 用 ref 存最新回调，所以这里必须是"第二版"，而不是首帧那一版
+    expect(seen[seen.length - 1]).toBe('第二版:A');
   });
 });
 
@@ -352,6 +504,7 @@ describe('收藏状态在弹窗里看得见', () => {
         <CharactersPage
           characters={[character]}
           tags={[{ tag: '奇幻', count: 1 }]}
+          importing={false}
           onImportFile={vi.fn()}
           onSearch={vi.fn()}
           onToggleFavorite={() => setCharacter((prev) => ({ ...prev, favorite: !prev.favorite }))}

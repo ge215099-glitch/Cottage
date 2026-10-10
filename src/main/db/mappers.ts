@@ -113,6 +113,13 @@ export interface ProviderRow {
   updated_at: number;
 }
 
+/**
+ * 角色卡的行形状。
+ *
+ * **不含 `raw_json`**：`toCharacter` 不用它，而它是整张卡的原始 JSON（真卡
+ * 110 KB～600 KB，世界书都在里面）。列角色的查询刻意不取它——取了就要读盘、
+ * 占内存、还要随 IPC 再抄一份。导出需要时由 `getCharacterRawJson` 单独查一列。
+ */
 export interface CharacterRow {
   id: string;
   name: string;
@@ -127,7 +134,6 @@ export interface CharacterRow {
   tags_json: string;
   favorite: number;
   avatar_path: string | null;
-  raw_json: string;
   created_at: number;
   updated_at: number;
 }

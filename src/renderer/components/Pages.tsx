@@ -20,6 +20,14 @@ import { ScrimDialog } from './Overlays.js';
 export interface CharactersPageProps {
   characters: Character[];
   tags: Array<{ tag: string; count: number }>;
+  /**
+   * 导入是否正在进行。
+   *
+   * 有了它，按钮在导入期间是禁用的：「导入角色卡」要弹**原生文件对话框**、选完文件
+   * 还要解析入库，这几秒里按钮看起来毫无反应，用户必然连点——连点会叠出多个原生
+   * 对话框（模态霸占输入，像卡死），也会真的导入出好几张重复的卡。
+   */
+  importing: boolean;
   onImportFile(): void;
   onSearch(query: string): void;
   onToggleFavorite(character: Character): void;
@@ -34,6 +42,7 @@ export interface CharactersPageProps {
 export function CharactersPage({
   characters,
   tags,
+  importing,
   onImportFile,
   onSearch,
   onToggleFavorite,
@@ -59,10 +68,28 @@ export function CharactersPage({
     ? (characters.find((c) => c.id === editingId) ?? null)
     : null;
 
+  /**
+   * `onSearch` 放在 ref 里，effect **只依赖 `query`**。
+   *
+   * 依赖数组里绝不能直接放 `onSearch`：App 传下来的是内联箭头函数，每次渲染都是
+   * 新身份（React 用 Object.is 比依赖，见 react.dev 的 "Removing Effect Dependencies"），
+   * 于是"渲染 → 跑 effect → onSearch → 主进程返回新数组 → setCharacters → 渲染"
+   * 变成**停不下来的循环**：角色库会持续发 IPC、持续重渲染，表现就是页面彻底没反应
+   * （点按钮、切页都在等主线程）。实测真卡一张就有 110 KB～600 KB，这个循环还要
+   * 把它们来回搬，所以卡得越来越死。
+   *
+   * 用 ref 而不是把 `onSearch` 记进依赖，是因为这里要的语义是"query 变了才重新搜"，
+   * 而不是"回调换了个身份就重新搜"——后者正是上面那个 bug。
+   */
+  const onSearchRef = useRef(onSearch);
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  }, [onSearch]);
+
   useEffect(() => {
     // 搜索与标签筛选都交给主进程（那里能一次读全量并精确比标签）
-    onSearch(query);
-  }, [query, onSearch]);
+    onSearchRef.current(query);
+  }, [query]);
 
   const visible = useMemo(() => {
     return characters.filter((character) => {
@@ -92,9 +119,15 @@ export function CharactersPage({
           <button type="button" className="btn" onClick={() => setFavoriteOnly((v) => !v)}>
             {favoriteOnly ? '显示全部' : '只看收藏'}
           </button>
-          <button type="button" className="btn" onClick={onImportFile}>
+          <button
+            type="button"
+            className="btn"
+            disabled={importing}
+            aria-busy={importing}
+            onClick={onImportFile}
+          >
             {Icons.upload()}
-            导入角色卡
+            {importing ? '正在导入…' : '导入角色卡'}
           </button>
         </div>
 

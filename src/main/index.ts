@@ -29,7 +29,7 @@ import { resolveAvatarRequest } from './avatars.js';
 import { openBetterSqlite3Driver } from './db/better-sqlite3-driver.js';
 import { migrate } from './db/migrations/index.js';
 import { sweepStreamingMessages } from './db/dao/messages.js';
-import { registerIpc, setAppVersion } from './ipc/index.js';
+import { registerIpc, setAppVersion, setMainWindow } from './ipc/index.js';
 import { createMainWindow } from './window.js';
 
 /*
@@ -127,12 +127,15 @@ async function bootstrap(): Promise<void> {
   // ---- 6. 建窗口 ----
   const window = createMainWindow();
   mainWindow = window;
+  // 让原生对话框（导入角色卡等）归主窗口所有并保持模态，见 ipc/index.ts 的 dialogParent
+  setMainWindow(window);
   ctx.emit = (channel, payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
   };
 
   window.on('closed', () => {
     mainWindow = null;
+    setMainWindow(null);
     // 窗口关了就中断所有在飞的流，避免后台继续写入
     if (ctx) abortAll(ctx);
   });
@@ -150,6 +153,7 @@ async function bootstrap(): Promise<void> {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createMainWindow();
+      setMainWindow(mainWindow);
       if (ctx) {
         ctx.emit = (channel, payload) => {
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);

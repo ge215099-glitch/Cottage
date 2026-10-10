@@ -10,9 +10,17 @@ import type { DatabaseDriver } from '../driver.js';
 import { ID_PREFIX, newId } from '../ids.js';
 import { parseJsonColumn, stringArraySchema, toCharacter, toJsonColumn, type CharacterRow } from '../mappers.js';
 
+/**
+ * 列表 / 单条读取用的列。
+ *
+ * **刻意不含 `raw_json`**：`Character`（对外形状）里没有这个字段，它只是导出时的
+ * 基底，由 `getCharacterRawJson` 单独取。带上它等于每次列角色都把每张卡的原始 JSON
+ * （实测真卡 110 KB～600 KB，世界书全在里面）从磁盘读出来、进内存、再随 IPC 抄一遍——
+ * 角色库每次刷新都要付这份钱，而用户根本看不到它。
+ */
 const SELECT_COLUMNS = `
   id,name,description,personality,scenario,first_mes,alternate_greetings_json,mes_example,
-  system_prompt,post_history_instructions,tags_json,favorite,avatar_path,raw_json,created_at,updated_at
+  system_prompt,post_history_instructions,tags_json,favorite,avatar_path,created_at,updated_at
 `;
 
 export interface ListCharactersQuery {
