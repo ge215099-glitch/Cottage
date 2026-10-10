@@ -44,7 +44,6 @@ logs/
 # ---- Node.js ----
 node_modules/
 dist/
-build/
 out/
 coverage/
 .npm/
@@ -52,6 +51,12 @@ coverage/
 .yarn/cache
 .yarn/install-state.gz
 *.tsbuildinfo
+
+# ---- 打包资源 ----
+# build/ 放 electron-builder 的图标资源，**要提交**（打包时找不到就会失败）。
+# 此前这里写的是 `build/`，等于把图标一起忽略了——打包配置一落地就会踩到。
+# 只忽略图标生成脚本留下的临时预览图。
+build/_preview*.png
 
 # ---- Python ----
 __pycache__/
@@ -69,7 +74,9 @@ ENV/
 .tox/
 *.egg-info/
 .eggs/
-build/
+# 注意：这里**不能**写 `build/`。Python 的 setuptools 约定用 build/，
+# 但本仓库的 build/ 被 electron-builder 占用为图标资源目录（见上方「打包资源」段），
+# 忽略它会让打包在找 build/icon.ico 时失败。
 dist/
 
 # ---- 打包 / 产物 ----
@@ -81,6 +88,11 @@ dist/
 
 # ---- DSH 本地运行时 ----
 .dsh/
+
+# ---- electron-builder 下载缓存 ----
+# 打包时会下载 Electron 运行时（100+ MB）与签名工具，缓存在仓库内。
+# 它能大幅加速重复打包，但不该进版本库。
+.cache/
 
 # ---- 临时草稿（例如提交前写的信息文件）----
 COMMIT_MSG*
