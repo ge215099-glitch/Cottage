@@ -33,6 +33,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { ChatView } from './components/ChatView.js';
 import { DetailPanel } from './components/DetailPanel.js';
 import { CharactersPage, PersonasPage, SettingsPage } from './components/Pages.js';
+import { type CharacterEditPatch } from './components/CharacterEditor.js';
 import { ApiKeysPage } from './components/ApiKeysPage.js';
 import { UsagePage } from './components/UsagePage.js';
 import { ConfirmDialog, MenuLayer, ToastLayer } from './components/Overlays.js';
@@ -108,8 +109,39 @@ export function App(): JSX.Element {
     if (tagResult.ok) setTags(tagResult.data);
   }, []);
 
-  const refreshPersonas = useCallback(async () => {
-    const result = await api().personas.list();
+  /**
+   * 保存角色卡。**角色库的编辑弹窗**与**新建对话向导的第 2 步**共用这一个入口。
+   *
+   * 返回错误文案而不是自己 toast 掉，是刻意的（与人设 / API Key 同一个口径）：
+   * 两个调用方都是弹窗，失败时必须**留在原地显示原因**——用户刚填了一屏，
+   * 在这里 toast 一下再把弹窗关掉，等于把他输的内容扔掉。
+   *
+   * 字段白名单也在这里：只发可编辑字段，`raw_json`（第三方字段的唯一载体）
+   * 与 `favorite` / `avatarPath` 一律不经过这条路径。
+   */
+  const saveCharacter = useCallback(
+    async (character: Character, patch: CharacterEditPatch): Promise<string | null> => {
+      const result = await api().characters.update(character.id, {
+        name: patch.name,
+        description: patch.description,
+        personality: patch.personality,
+        scenario: patch.scenario,
+        firstMes: patch.firstMes,
+        alternateGreetings: patch.alternateGreetings,
+        mesExample: patch.mesExample,
+        systemPrompt: patch.systemPrompt,
+        postHistoryInstructions: patch.postHistoryInstructions,
+        tags: patch.tags,
+      });
+      if (!result.ok) return result.error.message;
+      await refreshCharacters(useAppStore.getState().query || undefined);
+      toast('角色卡已保存');
+      return null;
+    },
+    [refreshCharacters],
+  );
+
+  const refreshPersonas = useCallback(async () => {    const result = await api().personas.list();
     if (result.ok) useAppStore.getState().setPersonas(result.data);
   }, []);
 
@@ -860,28 +892,7 @@ export function App(): JSX.Element {
             }}
             onExport={(character, rect, trigger) => openCharacterExportMenu(character, rect, trigger)}
             onNewConversation={(character) => openNewConversation(character)}
-            onSave={(character, patch) => {
-              void (async () => {
-                const result = await api().characters.update(character.id, {
-                  name: patch.name,
-                  description: patch.description,
-                  personality: patch.personality,
-                  scenario: patch.scenario,
-                  firstMes: patch.firstMes,
-                  alternateGreetings: patch.alternateGreetings,
-                  mesExample: patch.mesExample,
-                  systemPrompt: patch.systemPrompt,
-                  postHistoryInstructions: patch.postHistoryInstructions,
-                  tags: patch.tags,
-                });
-                if (!result.ok) {
-                  toast(result.error.message, 'error');
-                  return;
-                }
-                await refreshCharacters(useAppStore.getState().query || undefined);
-                toast('角色卡已保存');
-              })();
-            }}
+            onSave={saveCharacter}
           />
         ) : view === 'personas' ? (
           <PersonasPage
@@ -1035,6 +1046,7 @@ export function App(): JSX.Element {
           providers={providers}
           initialCharacterId={wizard.characterId}
           defaultProviderId={settings?.chatProviderId ?? null}
+          onSaveCharacter={saveCharacter}
           busy={wizard.busy}
           error={wizard.error}
           onConfirm={(choice) => void confirmNewConversation(choice)}

@@ -10,6 +10,7 @@ import type { AppDiagnostics, Character, Persona, Provider } from '@shared/types
 import { buildAvatarUrl } from '@shared/avatar-url.js';
 import { Icons } from './Icons.js';
 import { CharacterDetailDialog } from './CharacterDetailDialog.js';
+import { CharacterEditorDialog, type CharacterEditPatch } from './CharacterEditor.js';
 import { ScrimDialog } from './Overlays.js';
 
 /* ------------------------------------------------------------------ */
@@ -26,7 +27,8 @@ export interface CharactersPageProps {
   /** 导出：`rect` / `trigger` 用来把格式菜单锚在按钮上 */
   onExport(character: Character, rect: DOMRect, trigger: HTMLElement): void;
   onNewConversation(character: Character): void;
-  onSave(character: Character, patch: Partial<Character>): void;
+  /** 编辑角色卡；返回错误文案表示失败（弹窗留在原地、草稿不丢） */
+  onSave(character: Character, patch: CharacterEditPatch): Promise<string | null>;
 }
 
 export function CharactersPage({
@@ -42,16 +44,19 @@ export function CharactersPage({
 }: CharactersPageProps): JSX.Element {
   const [query, setQuery] = useState('');
   const [activeTags, setActiveTags] = useState<string[]>([]);
-  const [editing, setEditing] = useState<Character | null>(null);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   /*
-   * 详情弹窗只记 id，角色对象从 props 实时推导：
+   * 两个浮层都只记 id，角色对象从 props 实时推导：
    * 收藏/编辑后 App 会重新拉列表，若缓存整个对象，弹窗里就会显示旧状态。
    * 顺带解决了"角色被删掉后弹窗要自己关掉"——推导出来是 null 就自动关闭。
    */
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const detailCharacter = detailId
     ? (characters.find((c) => c.id === detailId) ?? null)
+    : null;
+  const editingCharacter = editingId
+    ? (characters.find((c) => c.id === editingId) ?? null)
     : null;
 
   useEffect(() => {
@@ -66,19 +71,6 @@ export function CharactersPage({
       return true;
     });
   }, [characters, activeTags, favoriteOnly]);
-
-  if (editing) {
-    return (
-      <CharacterEditor
-        character={editing}
-        onCancel={() => setEditing(null)}
-        onSave={(patch) => {
-          onSave(editing, patch);
-          setEditing(null);
-        }}
-      />
-    );
-  }
 
   return (
     <div className="page">
@@ -185,9 +177,18 @@ export function CharactersPage({
             onNewConversation(detailCharacter);
           }}
           onToggleFavorite={() => onToggleFavorite(detailCharacter)}
+          /*
+           * 「编辑」不再是"整页切到编辑器"，而是换成编辑弹窗。
+           *
+           * 详情弹窗先关掉、编辑弹窗关闭后再回到详情弹窗（而不是两个弹窗叠着）：
+           * 两层弹窗同时挂着的话，按 Esc 会**两层一起关**——两个监听器都在
+           * document 上，先注册的详情弹窗先跑，它看不到"这层不是栈顶"。
+           * 与其为此造一套浮层栈，不如让它们永远只有一层。
+           * 保存后回到详情弹窗还有个好处：看到的就是刚改完的那张卡。
+           */
           onEdit={() => {
             setDetailId(null);
-            setEditing(detailCharacter);
+            setEditingId(detailCharacter.id);
           }}
           onExport={(rect, trigger) => onExport(detailCharacter, rect, trigger)}
           onDelete={() => {
@@ -196,112 +197,18 @@ export function CharactersPage({
           }}
         />
       ) : null}
-    </div>
-  );
-}
 
-/** 角色卡编辑器（可编辑字段来自产品设计文档 3.2）。 */
-function CharacterEditor({
-  character,
-  onSave,
-  onCancel,
-}: {
-  character: Character;
-  onSave(patch: Partial<Character>): void;
-  onCancel(): void;
-}): JSX.Element {
-  const [draft, setDraft] = useState<Character>(character);
-
-  const field = (
-    key: keyof Character,
-    label: string,
-    hint?: string,
-    rows?: number,
-  ): JSX.Element => (
-    <div className="field">
-      <label htmlFor={`f-${String(key)}`}>
-        {label}
-        {hint ? <span className="sub">（{hint}）</span> : null}
-      </label>
-      {rows ? (
-        <textarea
-          id={`f-${String(key)}`}
-          value={String(draft[key] ?? '')}
-          rows={rows}
-          onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+      {editingCharacter ? (
+        <CharacterEditorDialog
+          character={editingCharacter}
+          onClose={() => {
+            setEditingId(null);
+            // 回到进来时那张卡的详情（角色已被删掉时推导为 null，自动不显示）
+            setDetailId(editingCharacter.id);
+          }}
+          onSave={onSave}
         />
-      ) : (
-        <input
-          id={`f-${String(key)}`}
-          type="text"
-          value={String(draft[key] ?? '')}
-          onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
-        />
-      )}
-    </div>
-  );
-
-  return (
-    <div className="page">
-      <div className="page-inner">
-        <h1>编辑角色卡</h1>
-        <p className="lede">
-          改动会写回角色卡；原卡的第三方字段仍然原样保留（导出时以 raw_json 为基底）。
-        </p>
-
-        <div className="editor-grid">
-          {field('name', '名称')}
-          {field('description', '描述', 'system_prompt 为空时用于拼接', 4)}
-          {field('personality', '性格', undefined, 3)}
-          {field('scenario', '场景', undefined, 3)}
-          {field('firstMes', '开场白 first_mes', undefined, 3)}
-          {field('systemPrompt', 'system_prompt', '留空则用描述/性格/场景拼接', 4)}
-          {field('postHistoryInstructions', 'post_history_instructions', undefined, 3)}
-          {field('mesExample', '示例对话 mes_example', '用 {{user}}: / {{char}}: 标记', 5)}
-        </div>
-
-        <div className="field" style={{ marginTop: 12 }}>
-          <label htmlFor="f-tags">标签（逗号分隔）</label>
-          <input
-            id="f-tags"
-            type="text"
-            value={draft.tags.join(', ')}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                tags: event.target.value
-                  .split(/[,，]/)
-                  .map((t) => t.trim())
-                  .filter(Boolean),
-              })
-            }
-          />
-        </div>
-
-        <div className="field">
-          <label htmlFor="f-alt">备用开场白（每行一条）</label>
-          <textarea
-            id="f-alt"
-            rows={3}
-            value={draft.alternateGreetings.join('\n')}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                alternateGreetings: event.target.value.split('\n').map((s) => s.trim()).filter(Boolean),
-              })
-            }
-          />
-        </div>
-
-        <div className="form-actions" style={{ marginTop: 18 }}>
-          <button type="button" className="btn primary" style={{ width: 'auto' }} onClick={() => onSave(draft)}>
-            保存
-          </button>
-          <button type="button" className="btn" onClick={onCancel}>
-            取消
-          </button>
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }

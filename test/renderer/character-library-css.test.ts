@@ -148,3 +148,36 @@ describe('收藏角标是"胶囊 + 实心 SVG 星"', () => {
     }
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* 两个对话框的布局：表单能滚、底部动作不跟着滚                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 编辑弹窗与向导都是"很高的表单 + 固定在底部的动作区"。
+ * jsdom 没有排版引擎，只能读样式文本：
+ *   - 对话框宽度必须比 `.dialog` 默认的 400px 宽（否则编辑 system_prompt 只能看两三行）；
+ *   - 高度必须封顶（`max-height`）且**只有表单那一段滚动**，否则「保存 / 取消」
+ *     会被一起滚出视口——这一点在真机上用 CDP 量过：677px 高、视口 757px、
+ *     表单 `scrollHeight > clientHeight`。
+ */
+describe('编辑弹窗与向导的布局', () => {
+  it('编辑弹窗是"大对话框"：够宽、高度封顶、表单区自己滚', () => {
+    const dialog = propsIn(overlays, '.dialog.char-editor');
+    const width = Number.parseInt(dialog.get('width') ?? '0', 10);
+    expect(width).toBeGreaterThanOrEqual(600);
+    expect(dialog.get('max-height')).toContain('100vh');
+    expect(dialog.get('display')).toBe('flex');
+    expect(propsIn(overlays, '.dialog.char-editor .char-editor-body').get('overflow-y')).toBe('auto');
+  });
+
+  it('向导宽度按最宽的那一步定（要放得下完整表单，且不随步骤变）', () => {
+    const width = Number.parseInt(propsIn(overlays, '.dialog.wizard').get('width') ?? '0', 10);
+    expect(width).toBeGreaterThanOrEqual(600);
+  });
+
+  it('向导第 2 步的提示文案样式能盖过 .dialog p 的默认段落样式', () => {
+    // `!important` 与更高特指度二选一，这里用的是后者（`.dialog p.wizard-hint`）
+    expect(ruleBody(overlays, '.dialog p.wizard-hint')).not.toBeNull();
+  });
+});

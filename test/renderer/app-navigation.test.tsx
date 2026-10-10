@@ -7,8 +7,11 @@
  *   1. `selectConversation` 只换了会话、没有切视图；
  *   2. 它还写了"id 相同就 return"——于是在设置页点**当前已选中**的会话会彻底没反应。
  *
- * 另外守一条交互决策：「新对话」不再一键建库，而是打开三步向导
- * （选角色 → 选人设 → 选 Key）。
+ * 另外守两条交互决策：
+ *   1. 「新对话」不再一键建库，而是打开四步向导
+ *      （选角色 → 自定义角色信息 → 选人设 → 选 Key）；
+ *   2. 向导第 2 步的「保存并继续」写回的是**角色卡本身**，而且只发可编辑字段
+ *      （`raw_json` / `favorite` / `avatarPath` 不许搭车）。
  *
  * API Key 模块与用量页的 App 级联动在 `api-keys-app.test.tsx` 里，不混进这份文件。
  */
@@ -74,7 +77,7 @@ describe('应用外壳的导航', () => {
     await waitFor(() => expect(onChatView()).toBe(true));
   });
 
-  it('侧栏「新对话」打开三步向导，而不是直接建一个会话', async () => {
+  it('侧栏「新对话」打开四步向导，而不是直接建一个会话', async () => {
     const user = userEvent.setup();
     await mount();
 
@@ -82,7 +85,7 @@ describe('应用外壳的导航', () => {
     await user.click(screen.getAllByRole('button', { name: '新对话' })[0]!);
 
     expect(screen.getByRole('dialog', { name: '新建对话' })).toBeTruthy();
-    expect(screen.getByText(/第 1 步 \/ 共 3 步/)).toBeTruthy();
+    expect(screen.getByText(/第 1 步 \/ 共 4 步/)).toBeTruthy();
   });
 
   it('向导确认后才真的建会话，并把选中的角色 / 人设 / Provider 一起提交', async () => {
@@ -99,6 +102,8 @@ describe('应用外壳的导航', () => {
 
     await user.click(screen.getAllByRole('button', { name: '新对话' })[0]!);
     await user.click(screen.getByRole('radio', { name: /爱丽丝/ }));
+    // 选完角色 → 自定义角色信息（这一步不改动，按钮就是普通的「下一步」）
+    await user.click(screen.getByRole('button', { name: '下一步' }));
     await user.click(screen.getByRole('button', { name: '下一步' }));
     await user.click(screen.getByRole('button', { name: '下一步' }));
     await user.click(screen.getByRole('button', { name: '开始对话' }));
@@ -111,6 +116,56 @@ describe('应用外壳的导航', () => {
       model: 'deepseek-chat',
       useFirstMessage: true,
     });
+  });
+
+  it('向导第 2 步改动写回角色卡本身，且只发可编辑字段（raw_json/收藏/头像不搭车）', async () => {
+    const user = userEvent.setup();
+    const { spies } = installFakeApi({
+      conversations: [makeConversation()],
+      characters: [makeCharacter({ favorite: true, avatarPath: 'avatars/lin.png' })],
+      providers: [makeProvider()],
+    });
+    useAppStore.setState({ view: 'chat' });
+    useChatStore.setState({ conversationId: null, messages: [] });
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole('listitem')).toBeTruthy());
+
+    await user.click(screen.getAllByRole('button', { name: '新对话' })[0]!);
+    await user.click(screen.getByRole('radio', { name: /爱丽丝/ }));
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+
+    // 第 2 步：改开场白，然后「保存并继续」
+    await user.type(screen.getByLabelText(/^开场白/), '（改过）');
+    await user.click(screen.getByRole('button', { name: '保存并继续' }));
+
+    await waitFor(() => expect(spies['characters.update']).toHaveBeenCalledTimes(1));
+    const [id, patch] = spies['characters.update']!.mock.calls[0]! as [string, Record<string, unknown>];
+    expect(id).toBe('chr_1');
+    expect(patch['firstMes']).toBe('「齿轮不是坏了，是被人换过。」（改过）');
+    /*
+     * 白名单：`raw_json`（第三方字段的唯一载体）与 `favorite` / `avatarPath`
+     * 都不许从这条路径写回去——收藏状态被"顺手覆盖"过一次就很难解释。
+     */
+    expect(Object.keys(patch).sort()).toEqual(
+      [
+        'alternateGreetings',
+        'description',
+        'firstMes',
+        'mesExample',
+        'name',
+        'personality',
+        'postHistoryInstructions',
+        'scenario',
+        'systemPrompt',
+        'tags',
+      ].sort(),
+    );
+
+    // 保存成功后照常进下一步，最终能建会话
+    expect(screen.getByText(/第 3 步 \/ 共 4 步/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+    await user.click(screen.getByRole('button', { name: '开始对话' }));
+    await waitFor(() => expect(spies['conversations.create']).toHaveBeenCalled());
   });
 });
 

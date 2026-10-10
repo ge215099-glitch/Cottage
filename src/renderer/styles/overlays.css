@@ -126,10 +126,15 @@
   color: var(--danger);
 }
 
-/* ---- 新建对话向导（3 步） ---- */
+/* ---- 新建对话向导（4 步） ---- */
 
+/*
+ * 宽度按**最宽的那一步**定：第 2 步「自定义角色信息」内嵌的是完整的角色卡表单
+ * （8 个多行输入 + 标签 + 备用开场白），460px 下编辑长 prompt 会很难受。
+ * 宽度固定而不是按步变，是为了避免"下一步"时对话框左右跳。
+ */
 .dialog.wizard {
-  width: 460px;
+  width: 680px;
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 80px);
@@ -167,8 +172,29 @@
 .wizard-body {
   margin-top: var(--space-4);
   overflow-y: auto;
-  /* 三步之间高度不同，给一个下限，避免对话框跳来跳去 */
+  /*
+   * 给一个下限，避免步骤之间高度不同时对话框跳来跳去；
+   * 上限由 `.dialog.wizard` 的 max-height 兜住，超出部分在这里滚动
+   * （第 2 步的表单比其它三步高得多，没有这条会把对话框顶出屏幕）。
+   */
   min-height: 220px;
+}
+
+/*
+ * 第 2 步的说明：必须说清"改的是角色卡本身"。
+ *
+ * 选择器写成 `.dialog p.wizard-hint` 而不是单个类名，是为了盖过
+ * `.dialog p` 那条（同为段落样式，但它的特指度更高）。
+ */
+.dialog p.wizard-hint {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+  line-height: 20px;
+}
+
+.dialog p.wizard-hint b {
+  color: var(--text-primary);
 }
 
 .choice-group {
@@ -370,6 +396,34 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+/* ---- 编辑角色卡弹窗（入口总表里的"大对话框"）---- */
+
+/*
+ * 720px 而不是 `.dialog` 默认的 400px：这张表单有 8 个多行字段，
+ * 编辑 system_prompt / 示例对话时窄了只能看到两三行。
+ * 上限仍受 `.dialog` 的 `max-width: calc(100vw - 40px)` 约束，窄窗口不会溢出。
+ */
+.dialog.char-editor {
+  width: 720px;
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 容器 tabindex=-1、不进 Tab 序列，打开时的程序化聚焦不该画出焦点环 */
+.dialog.char-editor:focus,
+.dialog.char-editor:focus-visible {
+  outline: none;
+}
+
+/* 只有表单滚，标题与「取消 / 保存」始终留在原位 */
+.dialog.char-editor .char-editor-body {
+  margin-top: var(--space-2);
+  overflow-y: auto;
+  /* 让滚动条不贴在输入框的边框上 */
+  padding-right: 4px;
 }
 
 .char-detail-label {

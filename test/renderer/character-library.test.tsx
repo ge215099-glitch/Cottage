@@ -14,7 +14,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import type { JSX } from 'react';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   CharactersPage,
@@ -42,7 +42,7 @@ function setup(overrides: Partial<CharactersPageProps> = {}) {
     onDelete: vi.fn(),
     onExport: vi.fn(),
     onNewConversation: vi.fn(),
-    onSave: vi.fn(),
+    onSave: vi.fn(async () => null),
     ...overrides,
   };
   const view = render(<CharactersPage {...props} />);
@@ -157,15 +157,90 @@ describe('角色详情弹窗', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('「编辑」切到编辑器并关掉弹窗', async () => {
+  it('「编辑」把详情弹窗换成编辑弹窗，而不是把整页换掉', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '编辑' }));
 
-    expect(screen.queryByRole('dialog')).toBeNull();
-    // 编辑器是整页视图，带「保存」按钮
-    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    /*
+     * 同一时刻只有一层浮层：两个弹窗都监听 document 上的 Esc，
+     * 叠在一起的话按一下会把两层一起关掉（先注册的那个先跑，它看不到"自己不是栈顶"）。
+     */
+    expect(screen.queryByRole('dialog', { name: '角色详情：爱丽丝' })).toBeNull();
+    const dialog = screen.getByRole('dialog', { name: '编辑角色卡：爱丽丝' });
+    expect((within(dialog).getByLabelText('名称') as HTMLInputElement).value).toBe('爱丽丝');
+    // 角色库没有被替换掉——弹窗只是浮在它上面
+    expect(screen.getByRole('heading', { name: '角色库' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: '保存' })).toBeTruthy();
+  });
+
+  it('保存成功后关掉编辑弹窗，并回到那张卡的详情（看到的就是刚改完的卡）', async () => {
+    const user = userEvent.setup();
+    const { props } = setup();
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '编辑' }));
+
+    const dialog = screen.getByRole('dialog', { name: '编辑角色卡：爱丽丝' });
+    await user.click(within(dialog).getByRole('button', { name: '保存' }));
+
+    expect(props.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'chr_1' }),
+      expect.objectContaining({ name: '爱丽丝' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '编辑角色卡：爱丽丝' })).toBeNull(),
+    );
+    expect(screen.getByRole('dialog', { name: '角色详情：爱丽丝' })).toBeTruthy();
+  });
+
+  it('保存失败：弹窗留在原地报错，刚改的内容不丢', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(async () => '入参校验失败：name 太短');
+    setup({ onSave });
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '编辑' }));
+
+    const dialog = screen.getByRole('dialog', { name: '编辑角色卡：爱丽丝' });
+    await user.type(within(dialog).getByLabelText(/^描述/), '补了一句。');
+    await user.click(within(dialog).getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      expect.stringContaining('入参校验失败'),
+    );
+    const still = screen.getByRole('dialog', { name: '编辑角色卡：爱丽丝' });
+    expect((within(still).getByLabelText(/^描述/) as HTMLTextAreaElement).value).toContain(
+      '补了一句。',
+    );
+  });
+
+  it('名称为空时「保存」是禁用的（以前会先关页面再报错，把一屏内容丢掉）', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '编辑' }));
+
+    const dialog = screen.getByRole('dialog', { name: '编辑角色卡：爱丽丝' });
+    await user.clear(within(dialog).getByLabelText('名称'));
+    expect((within(dialog).getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it('取消编辑回到那张卡的详情，且不调保存', async () => {
+    const user = userEvent.setup();
+    const { props } = setup();
+    await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '编辑' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: '编辑角色卡：爱丽丝' })).getByRole('button', {
+        name: '取消',
+      }),
+    );
+
+    expect(props.onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: '角色详情：爱丽丝' })).toBeTruthy();
   });
 
   it('Esc 与「关闭」都能关掉弹窗', async () => {
