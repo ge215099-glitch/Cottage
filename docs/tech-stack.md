@@ -650,6 +650,42 @@ UI 文档对菜单提了明确时序（180ms 宽限期、锚点切换不闪断�
 真 Electron 能否起来仍由 `pnpm smoke` 负责。启动器的单元测试在
 `test/launch-dev.test.mjs` 与 `test/create-desktop-shortcut.test.mjs`。
 
+### 10.2 打包配置的落地与三条纪律
+
+配置在 `electron-builder.yml`，入口是 `scripts/package-win.mjs`（不是直接调 electron-builder）。
+打包这件事有三个"构建期全绿、装完才炸"的坑，落地时按下面处理：
+
+**1. 原生模块的 ABI 必须在打包前确认。** `better-sqlite3` 的 `.node` 是按 Electron ABI
+编的。若它其实是 Node ABI（例如刚跑过 `pnpm install` 让原生 postinstall 覆盖了产物），
+electron-builder 照样能打出一个看起来完全正常的安装包，装完首次启动才报"找不到模块"。
+所以 `scripts/package-win.mjs` 在打包前复用 `rebuild-native.mjs` 的 `binaryPath()`
+做就绪判据，不通过直接退出 1，并提示 `pnpm rebuild:native`。
+
+**2. 原生模块必须解包到 asar 之外。** `.node` 是动态库，asar 内的文件无法被 `dlopen`。
+因此 `asarUnpack` 显式写 `**/*.node` 与 `node_modules/better-sqlite3/**`。
+
+**3. `node_modules` 必须显式进包。** 主进程与 preload 走 `externalizeDepsPlugin`，
+依赖不被 bundle 进 `out/**`，而是运行期从 `node_modules` 里 require。而 electron-builder
+在 pnpm 的符号链接布局下自动收集依赖并不可靠，所以 `files` 里显式列出
+`package.json` / `out/**/*` / `node_modules/**/*`，再排除构建期工具。
+
+以上三条都由 `scripts/verify-packaging.mjs` 固化成断言（已接入 `pnpm verify`），
+其自身的测试在 `test/verify-packaging.test.mjs`。
+
+**行为验证与它的边界。** `pnpm smoke:packaged` 默认只做结构性检查：确认 `.node` 确实落在
+`dist/win-unpacked/resources/app.asar.unpacked/` 里。要验"安装后首次启动能建库"
+（本文件验收清单第 13 条）得显式跑 `pnpm smoke:packaged:launch`，它在**临时目录**里用
+`--user-data-dir` 起一个独立 profile，测完整个删掉，**不读写真实 userData**。
+
+这条边界是踩过坑才划出来的：该测试最初会自动"备份→删除→重建"真实的
+`%APPDATA%\Cottage\cottage.db`，等于拿用户数据当试验场，实际丢过一次数据。
+现在的规则是——**任何测试都不允许读写真实 userData**；验证需要干净库就在独立目录里建。
+
+另外两个实测结论记在这里，免得再踩：自定义 profile 目录下 Chromium 常常建不出单实例锁
+（`process_singleton_win.cc: Lock file can not be created! Error code: 5`），应用会据此判
+"已有实例在运行"并正常退出（退出码 0）；打包产物若不加 `--no-sandbox`，在本机受限目录下
+还会以 `0x80000003` 立即退出。这两种都属**环境受限**，测试明确报"未能校验"而不是报通过。
+
 ---
 
 ## 11. 测试策略

@@ -42,7 +42,22 @@
 
 ---
 
-## 快速开始
+## 直接下载安装（不想碰代码的话）
+
+到本仓库的 [Releases](https://github.com/ge215099-glitch/Cottage/releases) 页面，下载最新的
+`Cottage-Setup-<版本>.exe`，双击安装即可。
+
+- **只支持 64 位 Windows**（安装包是 `x64` 的 NSIS）；
+- **不需要**安装 Node / pnpm，也**不需要** Visual Studio 之类的编译工具链——安装包里已经
+  带了 `better-sqlite3` 的原生模块；
+- 一机一用户安装，**不会弹 UAC**，装完在桌面与开始菜单各有一个 Cottage；
+- 首次启动会在 `%APPDATA%\Cottage\` 下建库（见下文「数据位置」）。
+
+> 想自己从源码打包，见下文「打包成安装包」。
+
+---
+
+## 快速开始（从源码跑）
 
 前置：Node ≥ 20、pnpm ≥ 11。
 
@@ -86,6 +101,31 @@ pnpm launch         # 与 pnpm dev 等价，只是把输出写进 logs/dev.log
 ```bash
 pnpm rebuild:native
 ```
+
+### 打包成安装包
+
+```bash
+pnpm package:win        # 先构建 out/，再产出 dist/Cottage-Setup-<version>.exe
+pnpm package:win:dir    # 只要解包目录 dist/win-unpacked/（排错用，快很多）
+pnpm icon               # 重新生成图标 build/icon.ico（改了 scripts/make-icon.py 之后）
+```
+
+配置在 `electron-builder.yml`，入口是 `scripts/package-win.mjs`。这层包装不是多余的：
+它**会在打包前自检 `better-sqlite3` 是否已是 Electron ABI**。ABI 不对时 electron-builder
+照样能打出一个看起来正常的安装包，装完首次启动才报"找不到模块"——构建期拦住比让用户
+装完才发现便宜得多。
+
+打包后先跑结构性检查，必要时再做行为验证：
+
+```bash
+pnpm smoke:packaged            # 默认：只校验 .node 确实落在 app.asar.unpacked 里
+pnpm smoke:packaged:launch     # 额外：在独立 userData 里启动应用，确认能建库
+```
+
+> `smoke:packaged:launch` **不会读写你的真实数据**：它在临时目录里用
+> `--user-data-dir` 起一个独立 profile，测完整个删掉。
+> 该模式在本机可能报"**未能完成校验**：Chromium 无法创建单实例锁"——自定义 profile
+> 目录下 Chromium 常建不出这个锁，属环境受限，测试会明确说明而不是伪装成通过。
 
 > **为什么需要这个命令**：`better-sqlite3` 的原生模块必须按 Electron 的 ABI 编译。
 > 它自带的 `postinstall` 走 node-gyp，在没有 Visual Studio C++ 工具链的机器上会失败，
