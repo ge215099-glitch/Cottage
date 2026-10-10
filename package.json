@@ -1,7 +1,7 @@
 {
   "name": "cottage",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "本地优先（BYOK）的 AI 角色扮演聊天桌面应用",
   "author": "Cottage",
   "main": "out/main/index.js",
