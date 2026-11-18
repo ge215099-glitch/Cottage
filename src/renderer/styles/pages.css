@@ -1,0 +1,485 @@
+/* 角色库 / 人设 / 设置三个视图的样式（沿用同一套 token）。 */
+
+.page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.page-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px 28px 48px;
+}
+
+.page h1 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.page .lede {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 22px;
+}
+
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.page-toolbar input[type='search'],
+.page-toolbar input[type='text'] {
+  flex: 1;
+  min-width: 160px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-app);
+  padding: 0 11px;
+  font-size: 13px;
+  outline: none;
+}
+
+.page-toolbar input:focus {
+  border-color: var(--accent-soft);
+}
+
+.filter-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.filter-chip {
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+}
+
+.filter-chip:hover {
+  background: var(--surface-active);
+}
+
+.filter-chip.active {
+  background: var(--surface-active);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ---- 列表卡片 ---- */
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.card-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: var(--radius-card);
+  position: relative;
+  cursor: pointer;
+}
+
+.card-row:hover {
+  background: var(--surface-hover);
+}
+
+.card-row.active {
+  background: var(--surface-active);
+}
+
+.card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-name {
+  font-size: 14px;
+  font-weight: 550;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-name .fav {
+  color: var(--favorite);
+  font-size: var(--font-size-meta);
+}
+
+.card-desc {
+  margin-top: 4px;
+  font-size: var(--font-size-meta);
+  line-height: 20px;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-actions {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+/* ---- 角色库：卡片网格（2:3 竖版；上面图片，下面名字，不显示描述） ---- */
+.char-grid {
+  display: grid;
+  /* 列宽自适应，避免固定列数在窄窗口下把卡片压扁 */
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: var(--space-4);
+}
+
+.char-card {
+  display: flex;
+  flex-direction: column;
+  /*
+   * align-items 必须**显式**写 stretch，不能靠默认值。
+   *
+   * Chromium 的 UA 样式表给 button 那一堆属性里除了 `text-align: center`、
+   * `padding`、`border`，还有一条 `align-items: flex-start`。前三样这里都覆盖了，
+   * 唯独漏了这一条——于是 flex-start 下 flex 项的宽度退化成 fit-content。
+   * 名字是 `white-space: nowrap` 的，而 nowrap 文本的 min-content **就等于整串名字**，
+   * 所以名字框被撑到整串名字那么宽、捅出卡片，糊在右边那张卡的名字上面。
+   * 那种情况下连 `overflow: hidden` 也救不了：框本身已经比卡片宽了，
+   * 文字在框内是"放得下"的，没有东西可裁。
+   *
+   * （同一个坑 `char-card-figure` 早就踩过，它靠 `width: 100%` 绕开的；
+   *   这里从根上把对齐写了，figure 那条 width 就只是冗余而不是救命稻草。）
+   */
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+
+.char-card-figure {
+  position: relative;
+  display: block;
+  width: 100%;
+  /* 2:3 竖版贴近角色卡美术；固定比例保证网格不会因为图片尺寸参差而跳动 */
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--surface-active);
+  border: 1px solid var(--border-subtle);
+}
+
+.char-card-figure img {
+  width: 100%;
+  height: 100%;
+  /*
+   * cover：填满 2:3 的框，允许裁掉一点。
+   * 卡面图比例五花八门（实测一张真卡是 768×1376，比 2:3 更瘦长），
+   * 要"一点都不裁"就得两侧留白，网格会参差不齐；宁可裁一点也要整齐。
+   */
+  object-fit: cover;
+  display: block;
+}
+
+/* 没有图片的角色卡：纯灰色色块，不留空洞也不放任何图标（图标等于默认头像） */
+.char-card-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-tertiary);
+  background: var(--surface-active);
+}
+
+.char-card:hover .char-card-figure,
+.char-card:focus-visible .char-card-figure {
+  border-color: var(--text-tertiary);
+}
+
+/*
+ * 已收藏角标：深色半透明小胶囊 + 实心 SVG 星。
+ *
+ * 此前是一个**文本字符** `★`（12px、`--warn` 橙、只有 text-shadow），三个问题：
+ *   1. 字形来自系统字体，与全应用那套 24×24 / 1.7px 描边的内联 SVG 图标不是一套；
+ *   2. 没有底色，直接压在卡面图上——卡面一花就被吃掉，卡面一亮又糊成一个橙点；
+ *   3. `--warn` 在本项目里是**警告色**，拿它表达收藏是语义串台。
+ * 现在胶囊给一层稳定的深色底（`--badge-scrim`），星色用专供深色底的 `--favorite-on-badge`，
+ * 因此不管卡面是黑是白、是花是纯，角标都读得出来，形状也与其他图标一致。
+ *
+ * 尺寸 22px、内缩 6px：6px 取卡片圆角（12px）的一半，胶囊与圆角弧线视觉等距。
+ * 用 `--space-1`(4px) 会显得贴边，`--space-2`(8px) 又太靠里，两个 token 都不合适。
+ */
+.char-card-fav {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--badge-scrim);
+  color: var(--favorite-on-badge);
+  /* 卡面细节透过胶囊会干扰认读，模糊一层让底盘更稳 */
+  backdrop-filter: blur(3px);
+}
+
+.char-card-fav svg {
+  display: block;
+}
+
+.char-card-name {
+  font-size: var(--font-size-list);
+  line-height: var(--line-height-list);
+  /* 名字只留一行，长了省略：两行会让网格行高不齐 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /*
+   * min-width: 0 是上面那行省略号**真正生效的前提**。
+   *
+   * flex 项默认 `min-width: auto`，其取值是内容的 min-content 尺寸；而 nowrap
+   * 文本的 min-content 恰好就是整串名字。不把它压到 0，最小尺寸就会把框顶回
+   * "整串名字那么宽"，`overflow: hidden` + `text-overflow: ellipsis` 永远没机会
+   * 出现——实测的表现就是名字横穿到右边那张卡上。
+   * （`.char-card` 自己也有 min-width: 0，那是给网格轨道用的，管不到这里的子项。）
+   */
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ---- 分类标签（角色详情弹窗里只读展示） ---- */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+}
+
+/* ---- 设置分区 ---- */
+.settings-section {
+  margin-bottom: 28px;
+}
+
+.settings-section > h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-section > .hint {
+  margin: 0 0 12px;
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  line-height: 20px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.setting-row:last-child {
+  border-bottom: 0;
+}
+
+.setting-row .label {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-row .label b {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.setting-row .label small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  line-height: 18px;
+}
+
+.setting-row select,
+.setting-row input[type='text'],
+.setting-row input[type='password'],
+.setting-row input[type='number'] {
+  min-width: 200px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-app);
+  padding: 0 9px;
+  font-size: 13px;
+  outline: none;
+}
+
+.setting-row select:focus,
+.setting-row input:focus {
+  border-color: var(--accent-soft);
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 密钥状态与警告 */
+.key-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-meta);
+}
+
+.key-status.ok {
+  color: var(--text-tertiary);
+}
+
+.key-status.warn {
+  color: var(--warn);
+}
+
+/* Linux basic_text 降级警告：必须显著（产品设计文档 3.1） */
+.storage-warning {
+  margin: 0 0 16px;
+  padding: 11px 13px;
+  border-radius: var(--radius-card);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn);
+  color: var(--text-primary);
+  font-size: var(--font-size-meta);
+  line-height: 20px;
+}
+
+.storage-warning b {
+  color: var(--warn);
+}
+
+/* 诊断表 */
+.diag-list {
+  font-size: var(--font-size-meta);
+}
+
+.diag-list div {
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.diag-list div span:first-child {
+  width: 140px;
+  color: var(--text-tertiary);
+  flex: 0 0 auto;
+}
+
+.diag-list div span:last-child {
+  flex: 1;
+  word-break: break-all;
+  font-family: var(--font-mono);
+}
+
+/* Provider 表单 */
+.provider-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  background: var(--surface-hover);
+  margin-bottom: 14px;
+}
+
+.provider-form .field {
+  margin-bottom: 0;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.test-result {
+  padding: 9px 12px;
+  border-radius: var(--radius-row);
+  font-size: var(--font-size-meta);
+  line-height: 20px;
+}
+
+.test-result.ok {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+
+.test-result.fail {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.test-result.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+/* 编辑器（角色卡）*/
+.editor-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.editor-grid textarea {
+  width: 100%;
+  min-height: 90px;
+  border-radius: 9px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-app);
+  padding: 9px 11px;
+  font-size: 13px;
+  line-height: 20px;
+  outline: none;
+  resize: vertical;
+}
+
+.editor-grid textarea:focus {
+  border-color: var(--accent-soft);
+}
+
+.empty-page {
+  padding: 18vh 24px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.empty-page button {
+  color: var(--accent-soft);
+  text-decoration: underline;
+}

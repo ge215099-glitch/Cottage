@@ -1,0 +1,438 @@
+/*
+ * 消息流与输入区（UI 文档第 3.1 / 4 / 5 节）。
+ *
+ * 两个刻意的规格（也是验收项）：
+ *   - 角色消息**无气泡**、全宽文本；用户消息是右对齐气泡。
+ *   - 界面**不使用头像**；说话人只由名字文本（12px 次要色）表达。
+ */
+
+.msg {
+  position: relative;
+  margin-top: var(--space-5);
+}
+
+/* 同角色连续消息 8px，换角色 24px —— 靠留白分组，不加分隔线 */
+.msg.same-role {
+  margin-top: var(--space-2);
+}
+
+.msg .head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.msg .head .name {
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+}
+
+.msg .body {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg.user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.msg.user .head {
+  display: none;
+}
+
+.msg.user .body {
+  background: var(--bubble-user);
+  border-radius: var(--radius-card);
+  padding: 10px 14px;
+  max-width: min(var(--bubble-max-width), 86%);
+}
+
+/*
+ * 归档消息**只以轻微降透明度区分**，不加任何「已归档」文案
+ * （UI 文档验收项 26：归档消息上不得出现「已归档」）。
+ */
+.msg.archived .body {
+  opacity: 0.62;
+}
+
+/* ---- 悬停工具条 ---- */
+.toolbar {
+  position: absolute;
+  top: -14px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-menu);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fade) var(--motion-ease);
+  z-index: 3;
+}
+
+.msg.assistant .toolbar {
+  right: 0;
+}
+
+.msg.user .toolbar {
+  left: 0;
+}
+
+.msg:hover .toolbar,
+.msg:focus-within .toolbar,
+.msg.show-toolbar .toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.toolbar button {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+
+.toolbar button:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.toolbar svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- 元信息：默认隐藏，悬停或全局开关打开时显示 ---- */
+.meta {
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity var(--motion-fade);
+}
+
+.msg:hover .meta,
+.meta.pinned {
+  opacity: 1;
+}
+
+.msg.user .meta {
+  text-align: right;
+  max-width: 86%;
+}
+
+/* ---- 生成中的光标 ---- */
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 17px;
+  background: var(--accent-soft);
+  vertical-align: -3px;
+  margin-left: 2px;
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---- 行内编辑 ---- */
+.edit-area {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  border-radius: var(--radius-button);
+  padding: 10px 12px;
+  background: var(--bg-app);
+  border: 1px solid var(--accent-soft);
+  outline: none;
+  font-size: var(--font-size-body);
+  line-height: 24px;
+}
+
+.edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.inline-error {
+  color: var(--danger);
+}
+
+/* ---- 中断与错误 ---- */
+.interrupted-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  margin-top: 8px;
+}
+
+.interrupted-tag button {
+  color: var(--accent-soft);
+}
+
+.error-bar {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-button);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.error-bar button {
+  color: inherit;
+  text-decoration: underline;
+  font-size: 13px;
+}
+
+/* ---- 摘要分割条 ---- */
+.summary-divider {
+  margin: 26px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+}
+
+.summary-divider::before,
+.summary-divider::after {
+  content: '';
+  height: 1px;
+  background: var(--border-subtle);
+  flex: 1;
+}
+
+.summary-pill {
+  font-size: var(--font-size-meta);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.summary-pill:hover {
+  background: var(--surface-active);
+}
+
+.summary-pill svg {
+  width: 13px;
+  height: 13px;
+}
+
+.summary-body {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+  background: var(--surface-hover);
+  font-size: 13px;
+  line-height: 22px;
+  color: var(--text-secondary);
+}
+
+.summary-body h4 {
+  margin: 0 0 6px;
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.summary-body ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.summary-body .restore {
+  margin-top: 10px;
+  font-size: var(--font-size-meta);
+  color: var(--accent-soft);
+}
+
+/* ---- 空态：角色名 + 开场白 + 开场白胶囊（无头像） ---- */
+.empty {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 12vh 24px 0;
+  text-align: center;
+}
+
+.empty h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.empty p {
+  margin: 0 auto;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 24px;
+  max-width: 480px;
+  white-space: pre-wrap;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 22px;
+}
+
+.chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.chip:hover {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+/* ---- 输入区 chip / 占用条 / 发送键 ---- */
+.mchip {
+  height: 28px;
+  border-radius: 8px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+}
+
+.mchip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mchip:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.mchip svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* 占用数字常驻（即使右栏收起也要看得见） */
+.meter {
+  margin-left: auto;
+  height: 28px;
+  border-radius: 8px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+}
+
+.meter:hover {
+  background: var(--surface-hover);
+}
+
+.meter .bar {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-active);
+  overflow: hidden;
+}
+
+.meter .bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent-soft);
+  border-radius: 3px;
+  transition: width 300ms var(--motion-ease);
+}
+
+/* ≥75% 琥珀，≥80% 红（UI 文档第 5 节） */
+.meter.warn {
+  color: var(--warn);
+}
+
+.meter.warn .bar i {
+  background: var(--warn);
+}
+
+.meter.danger {
+  color: var(--danger);
+}
+
+.meter.danger .bar i {
+  background: var(--danger);
+}
+
+.send-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg-app);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.send-btn.stop {
+  background: var(--text-primary);
+}
+
+.send-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 未配置 Key 时的引导条 */
+.key-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: var(--font-size-meta);
+  color: var(--danger);
+  margin-top: 8px;
+}
+
+.key-hint button {
+  color: var(--accent-soft);
+  text-decoration: underline;
+}

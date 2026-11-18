@@ -1,0 +1,482 @@
+/* 菜单 / 对话框 / toast（UI 文档第 4.4 / 4.5 / 4.7 节）。 */
+
+/* 浮层挂在 body 的 Portal 上，不被侧栏 overflow 裁切 */
+.overlay-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.overlay-root > * {
+  pointer-events: auto;
+}
+
+.menu {
+  position: fixed;
+  min-width: 200px;
+  padding: 5px;
+  border-radius: var(--radius-menu);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-menu);
+  animation: menuIn var(--motion-menu) var(--motion-ease);
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.menu button {
+  width: 100%;
+  height: 32px;
+  border-radius: 7px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  background: var(--surface-hover);
+}
+
+.menu button .k {
+  margin-left: auto;
+  font: 11px/1 var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+.menu button.danger {
+  color: var(--danger);
+}
+
+.menu hr {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: 5px 4px;
+}
+
+/* ---- 对话框 ---- */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim);
+  display: grid;
+  place-items: center;
+  animation: menuIn var(--motion-menu) var(--motion-ease);
+}
+
+.dialog {
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  border-radius: 14px;
+  background: var(--surface-overlay);
+  padding: 18px;
+  box-shadow: var(--shadow-menu);
+  border: 1px solid var(--border-subtle);
+}
+
+.dialog h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.dialog p {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 22px;
+}
+
+.dialog .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialog .actions .btn {
+  height: 32px;
+  width: auto;
+}
+
+.dialog .actions .btn.confirm-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.dialog .actions .btn.confirm-danger:hover {
+  opacity: 0.9;
+}
+
+.dialog .dialog-error {
+  margin-top: 10px;
+  font-size: var(--font-size-meta);
+  color: var(--danger);
+}
+
+/* ---- 新建对话向导（4 步） ---- */
+
+/*
+ * 宽度按**最宽的那一步**定：第 2 步「自定义角色信息」内嵌的是完整的角色卡表单
+ * （8 个多行输入 + 标签 + 备用开场白），460px 下编辑长 prompt 会很难受。
+ * 宽度固定而不是按步变，是为了避免"下一步"时对话框左右跳。
+ */
+.dialog.wizard {
+  width: 680px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 80px);
+}
+
+/*
+ * 打开时把焦点移进对话框是为了可访问性（读屏要落在对话框内），
+ * 但那会命中 base.css 的全局 `:focus-visible` 焦点环，鼠标用户也看到一圈蓝框，
+ * 违反 UI 文档 5.3「焦点环只在键盘导航出现，鼠标点击不显示」。
+ *
+ * 这个容器 tabindex=-1、永远不进 Tab 序列，所以它根本不需要焦点环；
+ * 真正的控件（取消 / 上一步 / 下一步 / 无线电项）仍由全局规则给环。
+ */
+.dialog.wizard:focus,
+.dialog.wizard:focus-visible {
+  outline: none;
+}
+
+.wizard-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.wizard-head h3 {
+  margin: 0;
+}
+
+.wizard-progress {
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+}
+
+.wizard-body {
+  margin-top: var(--space-4);
+  overflow-y: auto;
+  /*
+   * 给一个下限，避免步骤之间高度不同时对话框跳来跳去；
+   * 上限由 `.dialog.wizard` 的 max-height 兜住，超出部分在这里滚动
+   * （第 2 步的表单比其它三步高得多，没有这条会把对话框顶出屏幕）。
+   */
+  min-height: 220px;
+}
+
+/*
+ * 第 2 步的说明：必须说清"改的是角色卡本身"。
+ *
+ * 选择器写成 `.dialog p.wizard-hint` 而不是单个类名，是为了盖过
+ * `.dialog p` 那条（同为段落样式，但它的特指度更高）。
+ */
+.dialog p.wizard-hint {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-meta);
+  color: var(--text-secondary);
+  line-height: 20px;
+}
+
+.dialog p.wizard-hint b {
+  color: var(--text-primary);
+}
+
+.choice-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.choice-label {
+  margin: 0 0 var(--space-2) !important;
+  font-size: var(--font-size-list) !important;
+  color: var(--text-secondary) !important;
+}
+
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fade) var(--motion-ease);
+}
+
+.choice:hover,
+.choice:focus-visible {
+  background: var(--surface-hover);
+}
+
+.choice.active {
+  background: var(--surface-active);
+  border-color: var(--border-subtle);
+}
+
+.choice-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  flex: none;
+  color: var(--accent-soft);
+}
+
+.choice-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.choice-title {
+  font-size: var(--font-size-list);
+  line-height: var(--line-height-list);
+}
+
+.choice-meta {
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
+
+.wizard-empty p {
+  margin: 0;
+}
+
+/* 向导底部左侧是「取消」，其余靠右 */
+.dialog .actions .spacer {
+  flex: 1;
+}
+
+/* ---- 角色卡详情弹窗 ---- */
+
+.dialog.char-detail {
+  width: 520px;
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 与向导同理：容器 tabindex=-1、不进 Tab 序列，不需要焦点环 */
+.dialog.char-detail:focus,
+.dialog.char-detail:focus-visible {
+  outline: none;
+}
+
+.char-detail-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.char-detail-figure {
+  flex: 0 0 auto;
+  width: 120px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-active);
+}
+
+.char-detail-figure img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.char-detail-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-tertiary);
+}
+
+.char-detail-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.char-detail-info h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.char-detail-info h3 .fav {
+  font-size: var(--font-size-meta);
+  color: var(--favorite);
+  display: inline-flex;
+  align-items: center;
+}
+
+.char-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.char-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.char-detail-actions .btn {
+  height: 32px;
+  width: auto;
+}
+
+/* 危险动作（删除）单独用危险色，避免和收藏/导出混在一起误点 */
+.icon-btn.danger:hover,
+.icon-btn.danger:focus-visible {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+/*
+ * 已收藏的星按钮：实心图标 + 常驻 `--favorite`。
+ *
+ * 只换图标是不够的——16px 的空心/实心差别在扫视时很容易漏掉，而"收藏"是一个
+ * **持续状态**（不是一次性动作），状态就该常驻可见，所以这里不着眼于 hover，
+ * 而是让按钮本身一直带着颜色。用 `--favorite` 而不是 `--warn`：橙色在本项目里
+ * 表示"警告"（密钥存储降级、超阈值），收藏不是警告。
+ */
+.icon-btn.fav-on {
+  color: var(--favorite);
+}
+
+.char-detail-body {
+  margin-top: var(--space-4);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---- 编辑角色卡弹窗（入口总表里的"大对话框"）---- */
+
+/*
+ * 720px 而不是 `.dialog` 默认的 400px：这张表单有 8 个多行字段，
+ * 编辑 system_prompt / 示例对话时窄了只能看到两三行。
+ * 上限仍受 `.dialog` 的 `max-width: calc(100vw - 40px)` 约束，窄窗口不会溢出。
+ */
+.dialog.char-editor {
+  width: 720px;
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 容器 tabindex=-1、不进 Tab 序列，打开时的程序化聚焦不该画出焦点环 */
+.dialog.char-editor:focus,
+.dialog.char-editor:focus-visible {
+  outline: none;
+}
+
+/* 只有表单滚，标题与「取消 / 保存」始终留在原位 */
+.dialog.char-editor .char-editor-body {
+  margin-top: var(--space-2);
+  overflow-y: auto;
+  /* 让滚动条不贴在输入框的边框上 */
+  padding-right: 4px;
+}
+
+.char-detail-label {
+  font-size: var(--font-size-meta);
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+}
+
+.char-detail-value {
+  font-size: var(--font-size-list);
+  line-height: 21px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+/* 明文导出的一次性强提示 */
+.dialog.warn-dialog {
+  border-color: var(--warn);
+}
+
+.dialog .warn-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-row);
+  background: var(--warn-bg);
+  font-size: var(--font-size-meta);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+/* ---- toast ---- */
+.toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-menu);
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 13px;
+  animation: menuIn 140ms var(--motion-ease);
+}
+
+.toast.error {
+  color: var(--danger);
+}

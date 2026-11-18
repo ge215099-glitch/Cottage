@@ -1,0 +1,111 @@
+# ---- 操作系统 ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---- 编辑器 / IDE ----
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- 日志与临时文件 ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tmp
+*.temp
+tmp/
+temp/
+# 开发启动器的运行时产物：日志 / 锁 / 失败说明（见 scripts/launch-dev.mjs）
+logs/
+
+# ---- 密钥与环境变量（切勿提交） ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!*.pub
+
+# ---- Node.js ----
+node_modules/
+dist/
+out/
+coverage/
+.npm/
+.pnpm-store/
+.yarn/cache
+.yarn/install-state.gz
+*.tsbuildinfo
+
+# ---- 打包资源 ----
+# build/ 是 electron-builder 的 buildResources 目录（图标、安装器素材都在这里找）。
+# 里面的东西要提交，所以**不能**忽略 build/ 本身。
+# MVP 刻意不放自定义图标（用 Electron 默认图标，见 docs/tech-stack.md 第 10 节）——
+# 反过来说，往 build/ 里丢一个 icon.ico 就会被 electron-builder 静默采用，
+# 所以别把它当成"临时文件堆"。
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.tox/
+*.egg-info/
+.eggs/
+# 注意：这里**不能**写 `build/`。Python 的 setuptools 约定用 build/，
+# 但本仓库的 build/ 被 electron-builder 占用为 buildResources 目录（见上方「打包资源」段），
+# 忽略它会让将来放进去的打包素材提交不上。
+dist/
+
+# ---- 打包 / 产物 ----
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+
+# ---- DSH 本地运行时 ----
+.dsh/
+
+# ---- electron-builder 下载缓存 ----
+# 打包时会下载 Electron 运行时（100+ MB）与签名工具，缓存在仓库内。
+# 它能大幅加速重复打包，但不该进版本库。
+.cache/
+
+# ---- 临时草稿（例如提交前写的信息文件）----
+COMMIT_MSG*
+
+# ---- 课程作业的交付物与它们的中间产物 ----
+# 这里的 pptx / docx 是《软件工程课程设计》的作业，不是项目源码的一部分：
+# 它们能从 scripts/ 下的生成脚本 + docs/mvp-report-content.json 完整重建，
+# 而且 pptx 光嵌进去的演示视频就 16 MB（三个历史版本让 .git 涨到 52 MB）。
+# 生成命令见 docs/mvp-deck.md 第 4 节；文件不在时校验会跳过并提示，不会报错。
+docs/assets/*.pptx
+docs/assets/*.docx
+# 报告里三张示意图是 build-mvp-report.py 现画的，每次生成都会重写
+docs/assets/report-*.png
+# 演示视频的封面帧：由 scripts/make-video-poster.ps1 从 mp4 里取一帧得到
+docs/assets/video-poster.png
