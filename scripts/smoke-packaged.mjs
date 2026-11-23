@@ -227,6 +227,7 @@ async function run() {
   console.log(`· 启动打包后的应用（独立 userData：${userDataDir}）…`);
 
   let result;
+  let databaseHeader;
   try {
     // 最多试 3 次：强杀一次应用之后，Windows 不会立刻回收它持有的**命名内核对象**
     // （Chromium 的单实例锁就是命名 mutex），紧接着启动的新实例会拿不到锁而秒退。
@@ -241,11 +242,17 @@ async function run() {
         dbPath,
         // Chromium 的进程沙箱在本机受限目录下会以 0x80000003 立即退出（同
         // smoke-electron.mjs 的说明）。这里验的是启动链，不是 Chromium 沙箱。
-        args: process.env['COTTAGE_PACKAGE_SANDBOXED'] === '1' ? [] : ['--no-sandbox'],
+        args: [
+          `--user-data-dir=${userDataDir}`,
+          ...(process.env['COTTAGE_PACKAGE_SANDBOXED'] === '1' ? [] : ['--no-sandbox']),
+        ],
         verbose: VERBOSE,
       });
       // 只有"确实因为锁而没建库"才值得重试（此时库文件根本没出现）
       if (!/Lock file can not be created/i.test(result.output) || existsSync(dbPath)) break;
+    }
+    if (result.verdict === 'ready') {
+      databaseHeader = headBytes(dbPath, SQLITE_MAGIC.length).toString('latin1');
     }
   } finally {
     // 独立目录，整棵删掉即可；这里绝不触碰真实 userData
@@ -253,9 +260,8 @@ async function run() {
   }
 
   if (result.verdict === 'ready') {
-    const head = headBytes(result.dbPath, SQLITE_MAGIC.length).toString('latin1');
-    if (head !== SQLITE_MAGIC) {
-      console.error(`✗ cottage.db 已创建但不是合法 SQLite 文件（文件头：${JSON.stringify(head)}）`);
+    if (databaseHeader !== SQLITE_MAGIC) {
+      console.error(`✗ cottage.db 已创建但不是合法 SQLite 文件（文件头：${JSON.stringify(databaseHeader)}）`);
       process.exit(1);
     }
     console.log('✓ 打包产物启动冒烟测试通过');

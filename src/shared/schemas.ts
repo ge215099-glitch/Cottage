@@ -54,6 +54,16 @@ export const characterUpdateSchema = z.object({
   avatarPath: z.string().max(1024).nullable().optional(),
 });
 
+export const characterTranslationSchema = z.object({
+  requestId: idSchema,
+  characterId: idSchema,
+  mode: z.enum(['zh', 'bilingual']),
+  providerId: idSchema,
+  model: z.string().min(1).max(200),
+  protectedTerms: z.array(z.string().trim().min(1).max(200)).max(100),
+  confirmUncertain: z.boolean(),
+});
+
 export const personaInputSchema = z.object({
   id: idSchema.optional(),
   name: z.string().min(1).max(120),

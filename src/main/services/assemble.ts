@@ -31,6 +31,7 @@ export interface AssembledContext {
 /** 把 DAO 的 Character 转成 core 需要的 CharacterCard。 */
 export function toCharacterCard(character: {
   name: string;
+  languageMode?: CharacterCard['languageMode'];
   description: string;
   personality: string;
   scenario: string;
@@ -43,6 +44,7 @@ export function toCharacterCard(character: {
 }): CharacterCard {
   return {
     name: character.name,
+    ...(character.languageMode ? { languageMode: character.languageMode } : {}),
     description: character.description,
     personality: character.personality,
     scenario: character.scenario,

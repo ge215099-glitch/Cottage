@@ -171,7 +171,7 @@ describe('会话 DAO', () => {
     expect(updated.params.temperature).toBe(0.3);
     // 未覆盖的字段保持默认
     expect(updated.params.topP).toBe(0.95);
-    expect(updated.params.maxTokens).toBe(1024);
+    expect(updated.params.maxTokens).toBe(8192);
   });
 });
 
@@ -816,7 +816,7 @@ describe('可选字段的缺省处理', () => {
       { title: 't', characterId: charId, personaId: null, providerId: null, model: 'm' },
       T0 + 13,
     );
-    expect(created.params).toEqual({ temperature: 0.9, topP: 0.95, maxTokens: 1024 });
+    expect(created.params).toEqual({ temperature: 0.9, topP: 0.95, maxTokens: 8192 });
     expect(created.pinnedAt).toBeNull();
   });
 

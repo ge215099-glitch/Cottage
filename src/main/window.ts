@@ -12,7 +12,7 @@
  *   - **不装配原生菜单栏**：Windows / Linux 上不出现 `File / Edit / View / Window / Help`
  *     那一条（策略与理由见 `app-menu.ts`）。
  */
-import { BrowserWindow, Menu, shell } from 'electron';
+import { BrowserWindow, Menu, nativeTheme, shell } from 'electron';
 import path from 'node:path';
 import { appMenuTemplate } from './app-menu.js';
 import { buildContentSecurityPolicy, isInternalNavigation } from './csp.js';
@@ -23,6 +23,17 @@ const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] ?? null;
 
 /** 只允许这两种协议的链接用系统浏览器打开。 */
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+
+// Keep this height aligned with .window-titlebar in the renderer.
+const TITLE_BAR_HEIGHT = 40;
+
+function titleBarOverlay() {
+  return {
+    height: TITLE_BAR_HEIGHT,
+    color: '#00000000',
+    symbolColor: nativeTheme.shouldUseDarkColors ? '#ececec' : '#171717',
+  };
+}
 
 export function createMainWindow(): BrowserWindow {
   /*
@@ -35,6 +46,7 @@ export function createMainWindow(): BrowserWindow {
   const menuTemplate = appMenuTemplate(process.platform);
   Menu.setApplicationMenu(menuTemplate ? Menu.buildFromTemplate(menuTemplate) : null);
 
+  const useCustomCaptionColors = process.platform === 'win32' || process.platform === 'linux';
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -42,8 +54,10 @@ export function createMainWindow(): BrowserWindow {
     minWidth: 640,
     minHeight: 480,
     show: false,
-    backgroundColor: '#ffffff',
-    title: 'Cottage Next',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#212121' : '#ffffff',
+    title: 'Cottage',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: useCustomCaptionColors ? titleBarOverlay() : true,
     webPreferences: {
       // preload 与 main 一样输出到 out/<name>/index.js（见 electron.vite.config.ts 的说明）
       preload: path.join(__dirname, '../preload/index.js'),
@@ -56,8 +70,19 @@ export function createMainWindow(): BrowserWindow {
     },
   });
 
-  // 首帧就绪后再显示，避免白闪
-  window.once('ready-to-show', () => window.show());
+  if (useCustomCaptionColors) {
+    const updateCaption = () => window.setTitleBarOverlay(titleBarOverlay());
+    nativeTheme.on('updated', updateCaption);
+    window.once('closed', () => nativeTheme.removeListener('updated', updateCaption));
+  }
+
+  // Windows 的窗口按钮覆盖层可能在隐藏时不触发 ready-to-show。
+  // 仍优先等首帧，若页面已加载则可以显示窗口。
+  const showWindow = () => {
+    if (!window.isVisible()) window.show();
+  };
+  window.once('ready-to-show', showWindow);
+  window.webContents.once('did-finish-load', showWindow);
 
   // ---- CSP ----
   // 按模式构造：生产是 connect-src 'none'（renderer 不许发请求），

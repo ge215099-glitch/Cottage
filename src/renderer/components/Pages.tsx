@@ -7,11 +7,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { AppDiagnostics, Character, Persona, Provider } from '@shared/types.js';
+import { CHARACTER_LANGUAGE_LABEL } from '@shared/character-translation.js';
+import { detectCharacterLanguage } from '@core/character-translation.js';
 import { buildAvatarUrl } from '@shared/avatar-url.js';
 import { Icons } from './Icons.js';
 import { CharacterDetailDialog } from './CharacterDetailDialog.js';
+import { CharacterTranslationDialog } from './CharacterTranslationDialog.js';
+import { ChubSearchPanel } from './ChubSearchPanel.js';
 import { CharacterEditorDialog, type CharacterEditPatch } from './CharacterEditor.js';
 import { ScrimDialog } from './Overlays.js';
+import { UiIcon } from './UiIcon.js';
+import { toast } from '../stores/toast.js';
 
 /* ------------------------------------------------------------------ */
 /* 角色库                                                              */
@@ -19,6 +25,9 @@ import { ScrimDialog } from './Overlays.js';
 
 export interface CharactersPageProps {
   characters: Character[];
+  providers: Provider[];
+  defaultProviderId: string | null;
+  onTranslationSaved(query: string): Promise<void>;
   tags: Array<{ tag: string; count: number }>;
   /**
    * 导入是否正在进行。
@@ -41,6 +50,9 @@ export interface CharactersPageProps {
 
 export function CharactersPage({
   characters,
+  providers,
+  defaultProviderId,
+  onTranslationSaved,
   tags,
   importing,
   onImportFile,
@@ -51,9 +63,12 @@ export function CharactersPage({
   onNewConversation,
   onSave,
 }: CharactersPageProps): JSX.Element {
+  const [libraryTab, setLibraryTab] = useState<'local' | 'chub'>('local');
   const [query, setQuery] = useState('');
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterControlRef = useRef<HTMLDivElement | null>(null);
   /*
    * 两个浮层都只记 id，角色对象从 props 实时推导：
    * 收藏/编辑后 App 会重新拉列表，若缓存整个对象，弹窗里就会显示旧状态。
@@ -61,12 +76,14 @@ export function CharactersPage({
    */
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [translatingId, setTranslatingId] = useState<string | null>(null);
   const detailCharacter = detailId
     ? (characters.find((c) => c.id === detailId) ?? null)
     : null;
   const editingCharacter = editingId
     ? (characters.find((c) => c.id === editingId) ?? null)
     : null;
+  const translatingCharacter = characters.find((character) => character.id === translatingId);
 
   /**
    * `onSearch` 放在 ref 里，effect **只依赖 `query`**。
@@ -87,9 +104,25 @@ export function CharactersPage({
   }, [onSearch]);
 
   useEffect(() => {
-    // 搜索与标签筛选都交给主进程（那里能一次读全量并精确比标签）
+    // 搜索交给主进程；标签与收藏在当前列表上即时筛选，打开面板无需等待。
     onSearchRef.current(query);
   }, [query]);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (!filterControlRef.current?.contains(event.target as Node)) setFilterOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setFilterOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [filterOpen]);
 
   const visible = useMemo(() => {
     return characters.filter((character) => {
@@ -99,16 +132,50 @@ export function CharactersPage({
     });
   }, [characters, activeTags, favoriteOnly]);
 
-  return (
-    <div className="page">
-      <div className="page-inner">
-        <h1>角色库</h1>
-        <p className="lede">
-          兼容 SillyTavern v2 / v3 角色卡。导入时原卡 JSON 会被完整保留，
-          导出时以它为基底，因此第三方字段不会丢。
-        </p>
+  const activeFilterCount = activeTags.length + (favoriteOnly ? 1 : 0);
 
-        <div className="page-toolbar">
+  return (
+    <div className="page character-library-scroll">
+      <div className="page-inner character-library-page">
+        <div className="character-library-heading">
+          <div>
+            <h1>角色库</h1>
+          </div>
+        </div>
+
+        <div className="character-library-tabs" role="tablist" aria-label="角色库来源">
+          {(['local', 'chub'] as const).map((tab) => (
+            <button
+              key={tab}
+              id={`character-tab-${tab}`}
+              type="button"
+              role="tab"
+              aria-controls={`character-panel-${tab}`}
+              aria-selected={libraryTab === tab}
+              tabIndex={libraryTab === tab ? 0 : -1}
+              onClick={() => {
+                setFilterOpen(false);
+                setLibraryTab(tab);
+              }}
+              onKeyDown={(event) => {
+                const next = event.key === 'Home' ? 'local' : event.key === 'End' ? 'chub'
+                  : event.key === 'ArrowLeft' || event.key === 'ArrowRight'
+                    ? tab === 'local' ? 'chub' : 'local'
+                    : null;
+                if (!next) return;
+                event.preventDefault();
+                setFilterOpen(false);
+                setLibraryTab(next);
+                document.getElementById(`character-tab-${next}`)?.focus();
+              }}
+            >
+              {tab === 'local' ? '我的卡片' : 'Chub 搜索'}
+            </button>
+          ))}
+        </div>
+
+        <section id="character-panel-local" role="tabpanel" aria-labelledby="character-tab-local" hidden={libraryTab !== 'local'}>
+        <div className="page-toolbar character-library-toolbar">
           <input
             type="search"
             placeholder="搜索名称 / 描述 / 标签…"
@@ -116,9 +183,81 @@ export function CharactersPage({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <button type="button" className="btn" onClick={() => setFavoriteOnly((v) => !v)}>
-            {favoriteOnly ? '显示全部' : '只看收藏'}
-          </button>
+          <div className="filter-control" ref={filterControlRef}>
+            <button
+              type="button"
+              className={activeFilterCount ? 'btn filter-trigger active' : 'btn filter-trigger'}
+              aria-expanded={filterOpen}
+              aria-controls="character-filter-menu"
+              onClick={() => setFilterOpen((open) => !open)}
+            >
+              <UiIcon name="filter" />
+              <span>筛选</span>
+              {activeFilterCount ? <b className="filter-count">{activeFilterCount}</b> : null}
+              <UiIcon name={filterOpen ? 'up' : 'down'} />
+            </button>
+
+            {filterOpen ? (
+              <div
+                id="character-filter-menu"
+                className="filter-menu"
+                role="group"
+                aria-label="角色筛选条件"
+              >
+                <div className="filter-menu-head">
+                  <strong>筛选角色</strong>
+                  <button
+                    type="button"
+                    className="filter-clear"
+                    disabled={activeFilterCount === 0}
+                    onClick={() => {
+                      setActiveTags([]);
+                      setFavoriteOnly(false);
+                    }}
+                  >
+                    清除
+                  </button>
+                </div>
+
+                <label className="filter-option">
+                  <input
+                    type="checkbox"
+                    checked={favoriteOnly}
+                    onChange={(event) => setFavoriteOnly(event.target.checked)}
+                  />
+                  <span className="filter-option-label">收藏</span>
+                  <span className="filter-option-count">只显示已收藏</span>
+                </label>
+
+                {tags.length ? (
+                  <div className="filter-menu-section">
+                    <div className="filter-menu-label">标签</div>
+                    <div className="filter-options">
+                      {tags.map(({ tag, count }) => (
+                        <label className="filter-option" key={tag}>
+                          <input
+                            type="checkbox"
+                            checked={activeTags.includes(tag)}
+                            onChange={() =>
+                              setActiveTags((prev) =>
+                                prev.includes(tag)
+                                  ? prev.filter((item) => item !== tag)
+                                  : [...prev, tag],
+                              )
+                            }
+                          />
+                          <span className="filter-option-label">{tag}</span>
+                          <span className="filter-option-count">{count}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="filter-empty">还没有可用标签</p>
+                )}
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className="btn"
@@ -131,47 +270,29 @@ export function CharactersPage({
           </button>
         </div>
 
-        {tags.length ? (
-          <div className="filter-chips">
-            {tags.slice(0, 20).map(({ tag, count }) => {
-              const active = activeTags.includes(tag);
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  className={active ? 'filter-chip active' : 'filter-chip'}
-                  onClick={() =>
-                    setActiveTags((prev) =>
-                      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-                    )
-                  }
-                >
-                  {tag} {count}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-
         {visible.length === 0 ? (
-          <div className="empty-page">还没有角色卡　点击「导入角色卡」添加一个</div>
+          <div className="empty-page character-empty">
+            <strong>{characters.length ? '没有找到符合条件的角色' : '角色库还是空的'}</strong>
+            <span>{characters.length ? '试试调整搜索内容或筛选条件。' : '导入一张角色卡，开始构建你的故事。'}</span>
+            {characters.length ? (
+              <button type="button" className="btn" onClick={() => { setQuery(''); setActiveTags([]); setFavoriteOnly(false); }}>清除搜索与筛选</button>
+            ) : null}
+          </div>
         ) : (
-          /*
-           * 卡片网格（2:3 竖版）：上面是角色卡图片，下面是名字。
-           * 不显示描述——两个近名角色靠 `title` 悬停提示区分，信息没丢只是不占视觉。
-           * 卡片上的全部动作收进详情弹窗（见 CharacterDetailDialog）。
-           */
+          /* 角色库用封面和名称保持浏览轻快；点开后查看资料与全部操作。 */
           <div className="char-grid">
             {visible.map((character) => {
               const avatarUrl = buildAvatarUrl(character.avatarPath);
+              const languageLabel = character.languageMode ? CHARACTER_LANGUAGE_LABEL[character.languageMode] : '';
+              const displayName = languageLabel ? `${character.name} · ${languageLabel}` : character.name;
               return (
                 <button
                   type="button"
                   key={character.id}
                   className="char-card"
                   onClick={() => setDetailId(character.id)}
-                  title={character.description || character.scenario || character.name}
-                  aria-label={`查看角色卡：${character.name}`}
+                  title={displayName}
+                  aria-label={`查看角色卡：${displayName}`}
                 >
                   <span className="char-card-figure">
                     {avatarUrl ? (
@@ -193,12 +314,22 @@ export function CharactersPage({
                       </span>
                     ) : null}
                   </span>
-                  <span className="char-card-name">{character.name}</span>
+                  <span className="char-card-caption">
+                    <span className="char-card-name">{character.name}</span>
+                    {languageLabel ? <span className="character-language-badge">{languageLabel}</span> : null}
+                  </span>
                 </button>
               );
             })}
           </div>
         )}
+        </section>
+        <section id="character-panel-chub" role="tabpanel" aria-labelledby="character-tab-chub" hidden={libraryTab !== 'chub'}>
+          <ChubSearchPanel
+            active={libraryTab === 'chub'}
+            onImported={() => onTranslationSaved(query)}
+          />
+        </section>
       </div>
 
       {detailCharacter ? (
@@ -210,6 +341,14 @@ export function CharactersPage({
             onNewConversation(detailCharacter);
           }}
           onToggleFavorite={() => onToggleFavorite(detailCharacter)}
+          onTranslate={() => {
+            const language = detectCharacterLanguage(detailCharacter, []);
+            if (language === 'zh') return toast('这张卡已经是中文卡');
+            if (language === 'bilingual') return toast('这张卡已经是双语卡');
+            if (language === 'empty') return toast('这张卡没有可翻译的正文');
+            setDetailId(null);
+            setTranslatingId(detailCharacter.id);
+          }}
           /*
            * 「编辑」不再是"整页切到编辑器"，而是换成编辑弹窗。
            *
@@ -227,6 +366,21 @@ export function CharactersPage({
           onDelete={() => {
             setDetailId(null);
             onDelete(detailCharacter);
+          }}
+        />
+      ) : null}
+
+      {translatingCharacter ? (
+        <CharacterTranslationDialog
+          character={translatingCharacter}
+          providers={providers}
+          defaultProviderId={defaultProviderId}
+          onClose={() => { setTranslatingId(null); setDetailId(translatingCharacter.id); }}
+          onSaved={(character) => {
+            setTranslatingId(null);
+            setDetailId(character.id);
+            toast('已保存新角色卡');
+            void onTranslationSaved(query);
           }}
         />
       ) : null}
@@ -368,8 +522,7 @@ export function PersonasPage({ personas, onSave, onDelete }: PersonasPageProps):
           </div>
         </div>
         <p className="lede">
-          Persona 是全局资源，用来替换 <code>{'{{user}}'}</code>。每个会话可绑定一个；
-          未绑定时使用全局默认。关系落在会话上，不在这里。
+          设置你在故事中的名字和背景。每段对话可以选择不同的人设，未选择时使用默认人设。
         </p>
 
         {personas.length === 0 ? (
@@ -509,13 +662,7 @@ export interface SettingsPageProps {
   onUpdateSettings(patch: Record<string, unknown>): void;
 }
 
-/*
- * 设置页只留"全局默认 / 生成与行为 / 诊断"三段。
- *
- * Provider 与密钥的增删改**不在这里**——它有自己的导航模块（`ApiKeysPage`），
- * 列表 + 弹窗编辑都在那边。设置页保留"聊天默认 Provider / 压缩默认 Provider"
- * 两个下拉，是因为它们描述的是"默认值"，不是某把 Key 自身的配置。
- */
+// 通用设置由独立设置面板承载；连接管理仍复用 ApiKeysPage。
 export function SettingsPage({
   providers,
   settings,
@@ -526,7 +673,7 @@ export function SettingsPage({
   return (
     <div className="page">
       <div className="page-inner">
-        <h1>设置</h1>
+        <h1 className="sr-only">通用设置</h1>
 
         {/* Linux basic_text 降级警告必须显著（产品设计文档 3.1） */}
         {storageWarning ? (
@@ -537,8 +684,19 @@ export function SettingsPage({
         ) : null}
 
         <section className="settings-section">
-          <h2>外观</h2>
-          <div className="setting-row"><div className="label"><b>主题</b><small>选择让你读起来舒服的界面</small></div><select aria-label="主题" value={settings?.theme ?? 'system'} onChange={event => onUpdateSettings({ theme: event.target.value })}><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
+          <h2>主题</h2>
+          <div className="theme-options" role="group" aria-label="主题">
+            {([
+              { value: 'light', label: '浅色', icon: 'sun' },
+              { value: 'dark', label: '深色', icon: 'moon' },
+              { value: 'system', label: '跟随系统', icon: 'monitor' },
+            ] as const).map(option => <button
+              key={option.value}
+              className="theme-option"
+              aria-pressed={(settings?.theme ?? 'system') === option.value}
+              onClick={() => onUpdateSettings({ theme: option.value })}
+            ><UiIcon name={option.icon}/><span>{option.label}</span></button>)}
+          </div>
         </section>
         <section className="settings-section">
           <h2>默认模型连接</h2>
@@ -548,6 +706,7 @@ export function SettingsPage({
               <small>会话未单独指定时使用</small>
             </div>
             <select
+              aria-label="聊天连接"
               value={settings?.chatProviderId ?? ''}
               onChange={(event) => onUpdateSettings({ chatProviderId: event.target.value || null })}
             >
@@ -565,6 +724,7 @@ export function SettingsPage({
               <small>可与聊天不同（例如用更便宜的模型做摘要）</small>
             </div>
             <select
+              aria-label="整理记忆使用的连接"
               value={settings?.compressionProviderId ?? ''}
               onChange={(event) => onUpdateSettings({ compressionProviderId: event.target.value || null })}
             >
@@ -601,6 +761,7 @@ export function SettingsPage({
             </div>
             <input
               type="number"
+              aria-label="整理触发比例（百分比）"
               min={10}
               max={100}
               value={Math.round((settings?.autoCompressThreshold ?? 0.8) * 100)}
@@ -632,6 +793,7 @@ export function SettingsPage({
             </div>
             <input
               type="number"
+              aria-label="请求超时（秒）"
               min={5}
               max={600}
               value={Math.round((settings?.requestTimeoutMs ?? 60_000) / 1000)}

@@ -13,7 +13,7 @@ export interface ChatViewProps {
   conversation: Conversation | null; character: Character | null; summaries: Summary[];
   preview: TokenPreview | null; hasProvider: boolean; renaming: boolean;
   onStartRename(): void; onCommitRename(title: string): void; onCancelRename(): void;
-  onTogglePin(): void; onTogglePanel(): void;
+  onTogglePin(): void;
   onSend(text: string): Promise<boolean>; onStop(): void; onOpenApiKeys(): void;
   onRestoreSummary(id: string): void; onNewConversation(): void;
   onEditMessage(id: string, content: string, truncate: boolean): void;
@@ -27,11 +27,12 @@ export function ChatView(p: ChatViewProps) {
   const loading = useChatStore(s => s.loading);
   const draft = useComposerStore(s => s.draft);
   const setDraft = useComposerStore(s => s.setDraft);
-  const { providers, settings, sidebarCollapsed, toggleSidebar, setView, upsertConversation } = useAppStore();
+  const { providers, settings, setView, upsertConversation } = useAppStore();
   const [pendingSends, setPendingSends] = useState<string[]>([]);
   const sendError = useComposerStore(s => p.conversation ? s.sendErrors[p.conversation.id] : null);
   const [stickBottom, setStickBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const activeId = p.conversation?.id;
@@ -51,6 +52,15 @@ export function ChatView(p: ChatViewProps) {
       setStickBottom(saved?.stick ?? true);
     } else if (stickBottom) el.scrollTop = el.scrollHeight;
   }, [activeId, messages, stickBottom, loading]);
+  useEffect(() => {
+    const thread = threadRef.current;
+    if (!thread || !activeId || loading || !stickBottom || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    });
+    observer.observe(thread);
+    return () => observer.disconnect();
+  }, [activeId, loading, stickBottom]);
   useEffect(() => { if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.style.height = `${Math.min(200, inputRef.current.scrollHeight)}px`; } }, [draft, activeId]);
   const send = async () => {
     const text = draft.trim();
@@ -77,24 +87,17 @@ export function ChatView(p: ChatViewProps) {
     })));
     useMenuStore.getState().open({ rect: trigger.getBoundingClientRect(), targetId: 'models', trigger }, [...choices, { label: '管理模型连接…', onSelect: p.onOpenApiKeys }], '选择模型');
   };
-  const openMore = (trigger: HTMLElement) => useMenuStore.getState().open({ rect: trigger.getBoundingClientRect(), targetId: 'conversation', trigger }, [
-    { label: '对话设置', onSelect: () => usePanelStore.getState().setTab('conversation') },
-    { label: '角色资料', onSelect: () => usePanelStore.getState().setTab('character') },
-    { label: '对话记忆', onSelect: () => usePanelStore.getState().setTab('context') },
-    { label: '导出与更多操作', onSelect: () => usePanelStore.getState().setTab('data') },
-  ], '会话操作');
   return <main className="next-main" aria-label="对话">
-    <header className="next-topbar">
-      <div className="topbar-identity">{sidebarCollapsed && <button className="icon-btn" aria-label="展开侧栏" onClick={toggleSidebar}><UiIcon name="sidebar"/></button>}
-        <button className="identity-name" onClick={() => p.conversation ? usePanelStore.getState().setTab('character') : undefined}>{p.character?.name || 'Cottage'}</button>
-        {p.conversation && <><span className="identity-divider"/><button className="model-selector" onClick={e => openModelMenu(e.currentTarget)} aria-label="选择模型" aria-haspopup="menu" data-menu-trigger>{model || '配置模型'}<UiIcon name="down"/></button></>}
+    {p.conversation && <header className="next-topbar">
+      <div className="topbar-identity">
+        <div className="conversation-heading"><span className="identity-name" title={p.conversation.title}>{p.conversation.title}</span>
+        <button className="model-selector" onClick={e => openModelMenu(e.currentTarget)} aria-label="选择模型" aria-haspopup="menu" data-menu-trigger><span>{model || '配置模型'}</span><UiIcon name="down"/></button></div>
       </div>
-      {p.conversation && <button className="icon-btn" onClick={e => openMore(e.currentTarget)} aria-label="会话操作" aria-haspopup="menu" data-menu-trigger><UiIcon name="more"/></button>}
-    </header>
-    {!p.conversation ? <div className="welcome-screen"><div className="welcome-content"><div className="welcome-mark"><UiIcon name="home"/></div><p className="welcome-eyebrow">A PLACE FOR YOUR STORIES</p><h1>故事，从一句话开始。</h1><p className="welcome-subtitle">遇见一个角色，走进另一种日常。</p><button className="welcome-primary" onClick={p.onNewConversation}>开启新对话<UiIcon name="arrow"/></button><div className="welcome-links"><button onClick={() => setView('characters')}>探索角色库</button><span>·</span><button onClick={p.onOpenApiKeys}>配置模型连接</button></div></div><p className="welcome-footnote">属于你的角色，留在这里的故事。</p></div> : <>
+    </header>}
+    {!p.conversation ? <div className="welcome-screen"><div className="welcome-content"><h1>今天，想和谁聊聊？</h1><p className="welcome-subtitle">选一个角色，继续你的故事。</p><button className="welcome-primary" onClick={p.onNewConversation}><UiIcon name="new"/>新对话</button><div className="welcome-links"><button onClick={() => setView('characters')}><UiIcon name="library"/>角色库</button><button onClick={p.onOpenApiKeys}><UiIcon name="settings"/>模型连接</button></div></div></div> : <>
       <div ref={scrollRef} className="next-thread-scroll" onScroll={() => { const el = scrollRef.current; if (el && activeId && !loading && restoredId.current === activeId) { const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 70; setStickBottom(stick); threadPositions.set(activeId, { top: el.scrollTop, stick }); } }}>
-        <div className="next-thread" aria-live="polite" aria-busy={loading}>
-          {loading ? <p className="thread-loading">正在翻开对话…</p> : messages.length === 0 ? <div className="conversation-empty"><p>和{p.character?.name || '角色'}说点什么吧</p><span>一段新的故事，正等着开始。</span></div> : messages.map(message => <MessageItem key={message.id} message={message} characterName={p.character?.name ?? '角色'} showMetaAlways={false} streaming={message.status === 'streaming'} isLastAssistant={message.id === lastAssistant} onCopy={() => p.onCopyMessage(message)} onEdit={(content, truncate) => p.onEditMessage(message.id, content, truncate)} onRegenerate={() => p.onRegenerate(message.id)} onDelete={() => p.onDeleteMessage(message.id)} onDeleteFrom={() => p.onDeleteFromMessage(message.id)} onContinue={() => p.onRegenerate(message.id)} onStop={p.onStop} invalidatedSummaries={m => p.summaries.filter(s => s.coversTo >= m.sortOrder).length}/>)}
+        <div ref={threadRef} className="next-thread" aria-live="polite" aria-busy={loading}>
+          {loading ? <p className="thread-loading">正在翻开对话…</p> : messages.length === 0 ? <div className="conversation-empty"><p>和{p.character?.name || '角色'}说点什么吧</p><span>一段新的故事，正等着开始。</span></div> : messages.map(message => <MessageItem key={message.id} message={message} characterName={p.character?.name ?? '角色'} bilingual={p.character?.languageMode === 'bilingual'} showMetaAlways={false} streaming={message.status === 'streaming'} isLastAssistant={message.id === lastAssistant} onCopy={() => p.onCopyMessage(message)} onEdit={(content, truncate) => p.onEditMessage(message.id, content, truncate)} onRegenerate={() => p.onRegenerate(message.id)} onDelete={() => p.onDeleteMessage(message.id)} onDeleteFrom={() => p.onDeleteFromMessage(message.id)} onContinue={() => p.onRegenerate(message.id)} onStop={p.onStop} invalidatedSummaries={m => p.summaries.filter(s => s.coversTo >= m.sortOrder).length}/>)}
         </div>
       </div>
       {!stickBottom && <button className="latest-button icon-btn" aria-label="回到最新消息" onClick={() => { setStickBottom(true); scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }}><UiIcon name="down"/></button>}
@@ -110,7 +113,6 @@ export function ChatView(p: ChatViewProps) {
           }}/>
           {streaming ? <button type="button" className="composer-send" aria-label="停止生成" onClick={p.onStop}><UiIcon name="stop"/></button> : <button className="composer-send" type="submit" aria-label="发送消息" disabled={!draft.trim() || !provider?.hasKey || sending || loading}><UiIcon name="up"/></button>}
         </form>
-        <p className="composer-footnote">{settings?.sendWithCtrlEnter ? 'Ctrl + Enter 发送' : 'Enter 发送 · Shift + Enter 换行'}</p>
       </div>
     </>}
   </main>;

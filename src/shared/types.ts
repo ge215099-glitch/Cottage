@@ -66,9 +66,12 @@ export interface ProviderTestResult {
   storageWarning: string | null;
 }
 
+export type CharacterLanguageMode = 'zh' | 'bilingual';
+
 export interface Character {
   id: string;
   name: string;
+  languageMode?: CharacterLanguageMode;
   description: string;
   personality: string;
   scenario: string;
@@ -140,7 +143,7 @@ export interface GenerationParams {
 export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   temperature: 0.9,
   topP: 0.95,
-  maxTokens: 1024,
+  maxTokens: 8192,
 };
 
 export interface Conversation {

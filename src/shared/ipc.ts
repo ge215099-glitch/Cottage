@@ -24,9 +24,15 @@ export const INVOKE = {
   charactersImport: 'characters:import',
   charactersImportFile: 'characters:import-file',
   charactersUpdate: 'characters:update',
+  charactersTranslate: 'characters:translate',
+  charactersCancelTranslation: 'characters:cancel-translation',
+  charactersSaveTranslation: 'characters:save-translation',
   charactersDelete: 'characters:delete',
   charactersExport: 'characters:export',
   charactersTags: 'characters:tags',
+  chubSearch: 'chub:search',
+  chubCover: 'chub:cover',
+  chubImport: 'chub:import',
 
   /* 人设 */
   personasList: 'personas:list',

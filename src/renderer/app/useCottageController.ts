@@ -63,10 +63,23 @@ export function useCottageController() {
     () => conversations.find((c) => c.id === chat.conversationId) ?? null,
     [conversations, chat.conversationId],
   );
-  const activeCharacter = useMemo(
+  const listedActiveCharacter = useMemo(
     () => characters.find((c) => c.id === activeConversation?.characterId) ?? null,
     [characters, activeConversation],
   );
+  const activeCharacterId = activeConversation?.characterId;
+  const [resolvedActiveCharacter, setResolvedActiveCharacter] = useState<Character | null>(null);
+  const activeCharacter = listedActiveCharacter ??
+    (resolvedActiveCharacter?.id === activeCharacterId ? resolvedActiveCharacter : null);
+  useEffect(() => {
+    setResolvedActiveCharacter(null);
+    if (!activeCharacterId || listedActiveCharacter) return;
+    let current = true;
+    void api().characters.get(activeCharacterId).then((result) => {
+      if (current && result.ok) setResolvedActiveCharacter(result.data);
+    }).catch(() => undefined);
+    return () => { current = false; };
+  }, [activeCharacterId, listedActiveCharacter]);
   const hasProvider = providers.some((p) => p.hasKey && p.enabled);
 
   useEffect(() => { useComposerStore.getState().activateDraft(chat.conversationId); }, [chat.conversationId]);
@@ -171,7 +184,7 @@ export function useCottageController() {
       if (providerResult.ok) store.setProviders(providerResult.data);
       if (settingsResult.ok) {
         store.setSettings(settingsResult.data);
-        usePanelStore.setState({ open: false, tab: 'context' });
+        usePanelStore.setState({ open: true, tab: 'character' });
       }
       if (diagResult.ok) {
         setDiagnostics(diagResult.data);
@@ -278,7 +291,6 @@ export function useCottageController() {
   const selectConversation = useCallback(
     async (id: string) => {
       setView('chat');
-      usePanelStore.getState().setOpen(false);
       if (useChatStore.getState().conversationId === id) return;
       useChatStore.getState().setActive(id);
       await loadMessages(id);
@@ -724,6 +736,8 @@ export function useCottageController() {
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
 
+      if (mod && document.querySelector('[role="dialog"]')) return;
+
       if (mod && key === 'n') {
         event.preventDefault();
         openNewConversation();
@@ -772,7 +786,7 @@ export function useCottageController() {
     const result = await api().settings.update(patch as never);
     if (result.ok) {
       useAppStore.getState().setSettings(result.data);
-    }
+    } else toast(result.error.message, 'error');
   }, []);
 
   // 主题跟随系统，监听系统主题变化。

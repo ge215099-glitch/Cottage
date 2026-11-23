@@ -20,7 +20,7 @@ import { parseJsonColumn, stringArraySchema, toCharacter, toJsonColumn, type Cha
  */
 const SELECT_COLUMNS = `
   id,name,description,personality,scenario,first_mes,alternate_greetings_json,mes_example,
-  system_prompt,post_history_instructions,tags_json,favorite,avatar_path,created_at,updated_at
+  system_prompt,post_history_instructions,tags_json,favorite,avatar_path,created_at,updated_at,language_mode
 `;
 
 export interface ListCharactersQuery {
@@ -70,6 +70,10 @@ export function getCharacter(db: DatabaseDriver, id: string): Character | null {
   return row ? toCharacter(row) : null;
 }
 
+export function getChubCharacterId(db: DatabaseDriver, chubPath: string): string | undefined {
+  return db.prepare<{ id: string }>('SELECT id FROM characters WHERE chub_path = ?').get(chubPath.toLowerCase())?.id;
+}
+
 /** 取原始 JSON（导出用）。**只在主进程使用。** */
 export function getCharacterRawJson(
   db: DatabaseDriver,
@@ -94,16 +98,18 @@ export function importCharacter(
   db: DatabaseDriver,
   cardJson: unknown,
   now: number,
+  avatarPath: string | null = null,
+  source?: { id: string; chubPath?: string },
 ): CharacterImportResult {
   const card = parseCharacterCard(cardJson);
-  const id = newId(ID_PREFIX.character);
+  const id = source?.id ?? newId(ID_PREFIX.character);
 
   db.prepare(
     `INSERT INTO characters
        (id,name,description,personality,scenario,first_mes,alternate_greetings_json,mes_example,
         system_prompt,post_history_instructions,tags_json,favorite,avatar_path,raw_json,
-        created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        created_at,updated_at,language_mode,chub_path)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(
     id,
     card.name,
@@ -117,10 +123,12 @@ export function importCharacter(
     card.postHistoryInstructions,
     toJsonColumn(card.tags),
     0,
-    null,
+    avatarPath,
     toJsonColumn(card.rawJson),
     now,
     now,
+    card.languageMode ?? null,
+    source?.chubPath?.toLowerCase() ?? null,
   );
 
   return {
@@ -221,7 +229,7 @@ export function exportCharacter(
       postHistoryInstructions: character.postHistoryInstructions,
       tags: character.tags,
     },
-    { avatar: character.avatarPath },
+    { avatar: character.avatarPath, ...(character.languageMode ? { languageMode: character.languageMode } : {}) },
   );
 }
 

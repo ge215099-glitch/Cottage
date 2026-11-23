@@ -11,6 +11,7 @@
 export interface CharacterCard {
   /** 角色名，用于 `{{char}}` 替换与消息作者名 */
   name: string;
+  languageMode?: 'zh' | 'bilingual';
   description: string;
   personality: string;
   scenario: string;

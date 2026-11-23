@@ -1,26 +1,9 @@
-/**
- * API Key 模块（导航项「API Key」）。
- *
- * 形态参考 DeepSeek 开放平台的「API keys」页：**列表 + 弹窗**。
- *
- * 三条刻意的设计：
- *
- * 1. **页面上不常驻表单**。添加/编辑一律进弹窗，列表才是这一页的主角；
- *    常驻表单会让"我已经配过哪几把 Key"淹没在一堆输入框里。
- * 2. **密钥列显示的是掩码，不是密钥本身**。renderer 从主进程只能拿到
- *    `hasKey: boolean`（技术方案 6.4 规则 1），掩码是固定长度的占位符，
- *    不含真 Key 的任何片段——所以它不可能泄露，也不可能被误当成真值复制出去。
- * 3. **删除走全局确认框**。它是破坏性操作，且会牵连绑定了这个 Provider 的会话
- *    （外键 `ON DELETE SET NULL`），所以确认文案必须说清这一点。
- */
+/** 模型连接：紧凑列表与独立编辑弹窗。列表不展示配置详情或密钥占位。 */
 import { useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { Provider, ProviderTestResult } from '@shared/types.js';
 import { Icons } from './Icons.js';
 import { ScrimDialog } from './Overlays.js';
-
-/** 密钥列的固定掩码：长度固定、不含真值，纯粹表达"这里有一把 Key"。 */
-export const KEY_MASK = 'sk-••••••••••••••••';
 
 export interface ApiKeysPageProps {
   providers: Provider[];
@@ -151,10 +134,10 @@ export function ApiKeysPage({
   };
 
   return (
-    <div className="page">
+    <div className="page provider-page">
       <div className="page-inner">
         <div className="page-head-row">
-          <h1>API Key</h1>
+          <h1>模型连接</h1>
           <div className="page-head-actions">
             <button
               type="button"
@@ -164,7 +147,7 @@ export function ApiKeysPage({
                 if (providers[0]) onViewUsage(providers[0]);
               }}
             >
-              按 API Key 查看用量
+              查看用量
             </button>
             <button type="button" className="btn primary" style={{ width: 'auto' }} onClick={openNew}>
               创建 API Key
@@ -177,109 +160,31 @@ export function ApiKeysPage({
             还没有 API Key　点击「创建 API Key」添加第一个
           </div>
         ) : (
-          <div className="data-table-wrap">
-            <table className="data-table" aria-label="API Key 列表">
-              <thead>
-                <tr>
-                  <th scope="col">名称</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">Key</th>
-                  <th scope="col">创建日期</th>
-                  <th scope="col">最新使用日期</th>
-                  <th scope="col" className="col-actions">
-                    <span className="sr-only">操作</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {providers.map((provider) => {
-                  const result = testResults[provider.id];
-                  const testing = busyId === provider.id;
-                  return (
-                    <tr key={provider.id}>
-                      <td>
-                        <div className="cell-strong">{provider.name}</div>
-                        <div className="cell-sub">
-                          {provider.type === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'} ·{' '}
-                          {provider.baseUrl}
-                        </div>
-                        <div className="cell-sub">
-                          {provider.defaultModel
-                            ? `默认模型 ${provider.defaultModel}`
-                            : '未设置默认模型'}
-                          {provider.models.length ? ` · 共 ${provider.models.length} 个模型` : ''}
-                        </div>
-                        {result ? (
-                          <div
-                            className={
-                              result.outcome === 'ok'
-                                ? 'test-result ok'
-                                : result.outcome === 'auth-failed'
-                                  ? 'test-result warn'
-                                  : 'test-result fail'
-                            }
-                          >
-                            {result.outcome === 'ok'
-                              ? '可达，鉴权通过'
-                              : result.outcome === 'auth-failed'
-                                ? '可达，鉴权失败'
-                                : '不可达'}
-                            {result.httpStatus ? `（HTTP ${result.httpStatus}）` : ''}
-                            {' · '}
-                            {result.message}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td>
-                        <span className={provider.enabled ? 'tag ok' : 'tag'}>
-                          {provider.enabled ? '已启用' : '已停用'}
-                        </span>
-                      </td>
-                      <td>
-                        {provider.hasKey ? (
-                          <code className="key-mask">{KEY_MASK}</code>
-                        ) : (
-                          <span className="key-status warn">未配置 Key</span>
-                        )}
-                      </td>
-                      <td className="cell-mono">{formatDay(provider.createdAt)}</td>
-                      <td className="cell-mono">{formatDay(provider.lastUsedAt)}</td>
-                      <td className="col-actions">
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="btn"
-                            disabled={!provider.hasKey || testing}
-                            onClick={() => void onTest(provider.id)}
-                          >
-                            {testing ? '测试中…' : '测试'}
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            title="编辑"
-                            aria-label={`编辑 ${provider.name}`}
-                            onClick={() => openEdit(provider)}
-                          >
-                            {Icons.edit()}
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-btn danger"
-                            title="删除"
-                            aria-label={`删除 ${provider.name}`}
-                            onClick={() => onDelete(provider)}
-                          >
-                            {Icons.trash()}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <ul className="provider-list" aria-label="模型连接列表">
+            {providers.map(provider => {
+              const result = testResults[provider.id];
+              const testing = busyId === provider.id;
+              return <li className="provider-row" key={provider.id}>
+                <div className="provider-identity">
+                  <b className="provider-name" title={provider.name}>{provider.name}</b>
+                  <div className="provider-status" aria-live="polite">
+                    {testing ? <span>正在测试…</span>
+                      : result ? <span className={`connection-result ${result.outcome === 'ok' ? 'success' : 'failure'}`} role="status">
+                        {result.outcome === 'ok' ? <><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>测试通过</>
+                          : result.outcome === 'auth-failed' ? '鉴权失败' : '连接失败'}
+                      </span>
+                      : <span>{!provider.hasKey ? '未配置密钥' : provider.enabled ? '已启用' : '已停用'}</span>}
+                    {result && !testing && !provider.enabled && <span>已停用</span>}
+                  </div>
+                </div>
+                <div className="provider-actions">
+                  <button type="button" className="btn" disabled={!provider.hasKey || testing} onClick={() => void onTest(provider.id)}>{testing ? '测试中…' : '测试'}</button>
+                  <button type="button" className="icon-btn" title="编辑" aria-label={`编辑 ${provider.name}`} onClick={() => openEdit(provider)}>{Icons.edit()}</button>
+                  <button type="button" className="icon-btn danger" title="删除" aria-label={`删除 ${provider.name}`} onClick={() => onDelete(provider)}>{Icons.trash()}</button>
+                </div>
+              </li>;
+            })}
+          </ul>
         )}
       </div>
 

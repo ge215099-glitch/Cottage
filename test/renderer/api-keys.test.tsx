@@ -1,16 +1,9 @@
 // @vitest-environment jsdom
-/**
- * API Key 页（导航模块）测试。
- *
- * 守三条交互约定，它们都是这次改版的核心诉求：
- *   1. **添加/编辑走弹窗**，页面上不常驻表单（"添加面板不要直接放在页面上"）；
- *   2. **密钥列是掩码**，不是真 Key 也不是空（renderer 根本拿不到真值）；
- *   3. **删除是破坏性操作**，必须确认，并说明会牵连会话绑定。
- */
+/** 模型连接的紧凑展示与原有创建、编辑、测试和删除行为。 */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ApiKeysPage, KEY_MASK } from '../../src/renderer/components/ApiKeysPage.js';
+import { ApiKeysPage } from '../../src/renderer/components/ApiKeysPage.js';
 import { makeProvider, T0 } from './helpers.js';
 import type { Provider, ProviderTestResult } from '../../src/shared/types.js';
 
@@ -49,51 +42,42 @@ function setup(
   return { onTest, onSave, onDelete, onViewUsage };
 }
 
-describe('列表', () => {
-  it('每行显示名称 / 状态 / Key / 创建日期 / 最新使用日期', () => {
+describe('紧凑连接列表', () => {
+  it('仅显示名称、状态和操作，不展示配置详情或日期', () => {
     setup([makeProvider({ name: '本地 DeepSeek', lastUsedAt: T0 + 86_400_000 })]);
-
-    const table = screen.getByRole('table', { name: 'API Key 列表' });
-    for (const header of ['名称', '状态', 'Key', '创建日期', '最新使用日期']) {
-      expect(within(table).getByRole('columnheader', { name: header })).toBeTruthy();
-    }
-    expect(within(table).getByText('本地 DeepSeek')).toBeTruthy();
-    expect(within(table).getByText('已启用')).toBeTruthy();
+    const list = screen.getByRole('list', { name: '模型连接列表' });
+    expect(within(list).getByText('本地 DeepSeek')).toBeTruthy();
+    expect(within(list).getByText('已启用')).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(list.textContent).not.toContain('api.example.invalid');
+    expect(list.textContent).not.toContain('deepseek-chat');
+    expect(list.textContent).not.toContain('创建日期');
+    expect(list.textContent).not.toContain('sk-');
   });
-
-  it('页面上不存在常驻的添加表单（element 只在弹窗里出现）', () => {
+  it('页面上不存在常驻的添加表单', () => {
     setup();
     expect(screen.queryByLabelText('名称')).toBeNull();
     expect(screen.queryByLabelText('base_url')).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
-
-  it('没有配置 Key 的行显示「未配置 Key」，而不是空单元格', () => {
+  it('没有密钥时显示简短状态并禁用测试', () => {
     setup([makeProvider({ hasKey: false })]);
-    expect(screen.getByText('未配置 Key')).toBeTruthy();
-    expect(screen.queryByText(KEY_MASK)).toBeNull();
+    expect(screen.getByText('未配置密钥')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '测试' }) as HTMLButtonElement).disabled).toBe(true);
   });
-
-  it('从未用过的 Key，最新使用日期显示「—」', () => {
+  it('未使用过的连接也不显示日期占位', () => {
     setup([makeProvider({ lastUsedAt: null })]);
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(screen.queryByText('—')).toBeNull();
   });
-
-  it('空列表给出可读空态，而不是一张空表', () => {
+  it('空列表给出可读空态', () => {
     setup([]);
-    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('list', { name: '模型连接列表' })).toBeNull();
     expect(screen.getByText(/还没有 API Key/)).toBeTruthy();
   });
-});
-
-describe('密钥掩码', () => {
-  it('已配置 Key 的行只渲染固定掩码，不含任何真实片段', () => {
-    setup([makeProvider({ name: '本地端点' })]);
-    const code = screen.getByText(KEY_MASK);
-    expect(code.textContent).toBe(KEY_MASK);
-    // 掩码是固定字面量：不含 base_url、id、名字里的任何内容
-    expect(code.textContent).not.toContain('prv_1');
-    expect(code.textContent).not.toContain('api.example.invalid');
+  it('成功结果只显示简短提示，不显示 HTTP 或供应商原始消息', () => {
+    setup([makeProvider()], { testResults: { prv_1: { outcome: 'ok', httpStatus: 200, probe: 'models', message: '可达，鉴权通过，发现 2 个模型', models: ['deepseek-chat'], storageWarning: null } } });
+    expect(screen.getByRole('status').textContent).toBe('测试通过');
+    expect(screen.queryByText(/HTTP|发现 2 个模型|可达/)).toBeNull();
   });
 });
 
@@ -206,7 +190,7 @@ describe('测试与删除', () => {
     expect(onTest).toHaveBeenCalledWith('prv_1');
   });
 
-  it('已有测试结果时在行内显示三态文案', () => {
+  it('鉴权失败仅显示简短提示', () => {
     setup([makeProvider({ name: '本地端点' })], {
       testResults: {
         prv_1: {
@@ -219,7 +203,8 @@ describe('测试与删除', () => {
         },
       },
     });
-    expect(screen.getByText(/可达，鉴权失败（HTTP 401）/)).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('鉴权失败');
+    expect(screen.queryByText(/HTTP/)).toBeNull();
   });
 
   it('没有 Key 时测试按钮禁用（测试必然失败，不该让用户白点）', () => {
@@ -249,14 +234,14 @@ describe('按 API Key 查看用量', () => {
   it('按钮把当前第一条 Key 交给用量页', async () => {
     const user = userEvent.setup();
     const { onViewUsage } = setup([makeProvider({ name: '本地端点' })]);
-    await user.click(screen.getByRole('button', { name: '按 API Key 查看用量' }));
+    await user.click(screen.getByRole('button', { name: '查看用量' }));
     expect(onViewUsage).toHaveBeenCalledWith(expect.objectContaining({ id: 'prv_1' }));
   });
 
   it('一把 Key 都没有时按钮禁用（跳过去也没有可筛的东西）', () => {
     setup([]);
     expect(
-      (screen.getByRole('button', { name: '按 API Key 查看用量' }) as HTMLButtonElement).disabled,
+      (screen.getByRole('button', { name: '查看用量' }) as HTMLButtonElement).disabled,
     ).toBe(true);
   });
 });

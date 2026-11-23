@@ -15,6 +15,7 @@ import rehypeSanitize from 'rehype-sanitize';
 
 export interface MarkdownBodyProps {
   content: string;
+  preserveLineBreaks?: boolean;
 }
 
 /**
@@ -72,9 +73,9 @@ const SANITIZE_SCHEMA = {
   },
 };
 
-function MarkdownBodyInner({ content }: MarkdownBodyProps): JSX.Element {
+function MarkdownBodyInner({ content, preserveLineBreaks }: MarkdownBodyProps): JSX.Element {
   return (
-    <div className="md">
+    <div className={preserveLineBreaks ? 'md bilingual-lines' : 'md'}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, SANITIZE_SCHEMA]]}

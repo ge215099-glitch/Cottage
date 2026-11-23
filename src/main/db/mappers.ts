@@ -123,6 +123,7 @@ export interface ProviderRow {
 export interface CharacterRow {
   id: string;
   name: string;
+  language_mode: Character['languageMode'] | null;
   description: string;
   personality: string;
   scenario: string;
@@ -220,6 +221,7 @@ export function toCharacter(row: CharacterRow): Character {
   return {
     id: row.id,
     name: row.name,
+    ...(row.language_mode ? { languageMode: row.language_mode } : {}),
     description: row.description,
     personality: row.personality,
     scenario: row.scenario,

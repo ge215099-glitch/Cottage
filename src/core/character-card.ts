@@ -8,11 +8,14 @@
  * 不删任何第三方字段、不改嵌套层级，所以"不丢字段"是结构保证而不是测试运气。
  */
 
+import type { CharacterLanguageMode } from '@shared/types.js';
+
 export type CardSpecVersion = 'v2' | 'v3' | 'unknown';
 
 /** Cottage 能识别并管理的字段（导入时读取、导出时回写）。 */
 export interface ParsedCharacterCard {
   specVersion: CardSpecVersion;
+  languageMode?: CharacterLanguageMode;
   name: string;
   description: string;
   personality: string;
@@ -132,9 +135,13 @@ export function parseCharacterCard(input: unknown): ParsedCharacterCard {
 
   // rawJson 必须**原样**保留，因此对输入做一次深拷贝（不持有调用方引用）。
   const rawJson = deepClone(input) as Record<string, unknown>;
+  const extensions = fields.extensions;
+  const cottage = isRecord(extensions) ? extensions.cottage : null;
+  const languageMode = isRecord(cottage) ? cottage.languageMode : null;
 
   return {
     specVersion,
+    ...(languageMode === 'zh' || languageMode === 'bilingual' ? { languageMode } : {}),
     name,
     description: readString(fields, 'description'),
     personality: readString(fields, 'personality'),
@@ -192,6 +199,7 @@ export interface CharacterFields {
 }
 
 export interface ExportOptions {
+  languageMode?: CharacterLanguageMode;
   /** 自定义头像：导出时内联到 `extensions.cottage.avatar`（相对路径或 data URL） */
   avatar?: string | null;
   /** Cottage 附加信息的写入位置，默认沿用原卡的 extensions 结构 */
@@ -229,11 +237,15 @@ export function exportCharacterCard(
   }
 
   // Cottage 自己的扩展信息统一挂在 extensions.cottage 下，不污染第三方命名空间。
-  if (options.avatar) {
+  if (options.avatar || options.languageMode) {
     const key = options.extensionsKey ?? 'cottage';
     const existingExt = isRecord(target.extensions) ? (target.extensions as Record<string, unknown>) : {};
     const existingOwn = isRecord(existingExt[key]) ? (existingExt[key] as Record<string, unknown>) : {};
-    existingExt[key] = { ...existingOwn, avatar: options.avatar };
+    existingExt[key] = {
+      ...existingOwn,
+      ...(options.avatar ? { avatar: options.avatar } : {}),
+      ...(options.languageMode ? { languageMode: options.languageMode } : {}),
+    };
     target.extensions = existingExt;
   }
 

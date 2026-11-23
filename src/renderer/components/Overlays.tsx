@@ -190,7 +190,8 @@ function useDialogKeys(ref: React.RefObject<HTMLElement | null>, onClose: () => 
             'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], summary',
           ) ?? [],
         );
-        const visible = list.filter(element => !element.closest('details:not([open])') || element.tagName === 'SUMMARY');
+        const visible = list.filter(element => element.tabIndex >= 0 && !element.closest('[hidden], [inert]') &&
+          (!element.closest('details:not([open])') || element.tagName === 'SUMMARY'));
         if (!visible.length) return;
         const first = visible[0]!;
         const last = visible[visible.length - 1]!;

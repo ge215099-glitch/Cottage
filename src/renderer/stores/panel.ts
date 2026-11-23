@@ -1,19 +1,14 @@
-/**
- * 右栏切片（技术方案 9.3）。
- *
- * 开关与当前标签**落 `app_settings`**（UI 文档 8 节：只需记忆"上次是否打开 +
- * 上次在哪个标签"）。宽度不落库——因为只有展开/收起两态，没有中间值。
- */
+/** 对话右栏。开关不影响聊天或后台整理任务。 */
 import { create } from 'zustand';
 
-/** 右栏四个标签（UI 文档第 3.2 节注：含新增的「角色」入口）。 */
+/** 右栏的直接入口，与界面顺序一致。 */
 export type PanelTab = 'context' | 'conversation' | 'character' | 'data';
 
 export const PANEL_TABS: Array<{ key: PanelTab; label: string }> = [
-  { key: 'context', label: '上下文' },
-  { key: 'conversation', label: '对话' },
   { key: 'character', label: '角色' },
-  { key: 'data', label: '数据' },
+  { key: 'conversation', label: '对话' },
+  { key: 'context', label: '记忆' },
+  { key: 'data', label: '导出' },
 ];
 
 export interface PanelState {
@@ -29,8 +24,8 @@ export interface PanelState {
 }
 
 export const usePanelStore = create<PanelState>((set) => ({
-  open: false,
-  tab: 'context',
+  open: true,
+  tab: 'character',
   scrollTo: null,
 
   setOpen: (open) => set({ open }),

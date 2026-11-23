@@ -11,6 +11,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { ALL_EVENT_CHANNELS, EVENT, INVOKE } from '@shared/ipc.js';
 import { API_GLOBAL, type CottageApi, type Result, type Unsubscribe } from '@shared/api.js';
 import type { ChangedEvent } from '@shared/ipc.js';
+import type { TranslationResult } from '@shared/character-translation.js';
+import type { ChubPage } from '@shared/chub.js';
 import type {
   AppDiagnostics,
   AppSettings,
@@ -69,6 +71,11 @@ function subscribe<T>(channel: string, handler: (payload: T) => void): Unsubscri
 }
 
 const api: CottageApi = {
+  chub: {
+    search: (query) => invoke<ChubPage>(INVOKE.chubSearch, query),
+    cover: (path) => invoke<string | null>(INVOKE.chubCover, path),
+    importCard: (path) => invoke<true>(INVOKE.chubImport, path),
+  },
   providers: {
     list: () => invoke<Provider[]>(INVOKE.providersList),
     get: (id) => invoke<Provider | null>(INVOKE.providersGet, id),
@@ -84,6 +91,9 @@ const api: CottageApi = {
     import: (card: unknown) => invoke<CharacterImportResult>(INVOKE.charactersImport, card),
     importFile: () => invoke<CharacterImportResult | null>(INVOKE.charactersImportFile),
     update: (id, patch: CharacterUpdatePayload) => invoke<Character>(INVOKE.charactersUpdate, id, patch),
+    translate: (input) => invoke<TranslationResult>(INVOKE.charactersTranslate, input),
+    cancelTranslation: (id) => invoke<boolean>(INVOKE.charactersCancelTranslation, id),
+    saveTranslation: (id) => invoke<Character>(INVOKE.charactersSaveTranslation, id),
     delete: (id) => invoke<{ ok: boolean; reason?: string }>(INVOKE.charactersDelete, id),
     export: (id, format) =>
       invoke<CharacterExportResult>(INVOKE.charactersExport, id, format ?? 'json'),

@@ -10,16 +10,16 @@
  * 为什么单独立一个 service 而不是塞进 IPC handler：这里同时碰文件系统、
  * 头像目录与 DAO，是能独立测试的一段逻辑（handler 只负责弹对话框与翻译错误）。
  *
- * 顺序很重要：**先入库拿到 id，再用 id 命名头像文件**。用原文件名当头像名会有
- * 重名覆盖与非法字符两个问题；而先写文件再入库，失败时会留下孤儿文件。
+ * PNG 头像使用预分配的角色 ID 命名。头像写好后再入库，入库失败时清理头像。
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CharacterCardError } from '@core/character-card.js';
 import { extractPngCardPayload, isPngFile } from '@core/png-card.js';
 import type { CharacterImportResult } from '@shared/types.js';
 import type { DatabaseDriver } from '../db/driver.js';
-import { importCharacter, updateCharacter } from '../db/dao/characters.js';
+import { importCharacter } from '../db/dao/characters.js';
+import { ID_PREFIX, newId } from '../db/ids.js';
 import { AVATAR_DIR } from '../avatars.js';
 
 export interface FileImportResult extends CharacterImportResult {
@@ -46,7 +46,7 @@ export async function importCharacterFromFile(
 /**
  * 从内存字节导入（测试与"将来从剪贴板/拖拽导入"共用同一个入口）。
  *
- * PNG：解析出 JSON → 入库 → 把**原始 PNG 字节**写到 `avatars/<角色 id>.png`。
+ * PNG：解析出 JSON → 将原始 PNG 保存为头像 → 入库。
  * JSON：直接入库，不动头像。
  */
 export async function importCharacterFromBytes(
@@ -55,44 +55,27 @@ export async function importCharacterFromBytes(
   bytes: Uint8Array,
   sourceName: string,
   now: number,
+  chubPath?: string,
 ): Promise<FileImportResult> {
-  const isPng = isPngFile(bytes);
-
-  let cardJson: unknown;
-  if (isPng) {
-    // 解析失败就让它抛 PngCardError，由上层翻成可读错误
-    cardJson = extractPngCardPayload(bytes).json;
-  } else {
+  if (!isPngFile(bytes)) {
     const text = new TextDecoder('utf-8').decode(bytes);
     if (!text.trim()) {
       throw new CharacterCardError('invalid-json', `文件是空的：${path.basename(sourceName)}`);
     }
-    cardJson = text;
+    return { ...importCharacter(db, text, now), savedAvatar: false };
   }
 
-  const imported = importCharacter(db, cardJson, now);
-  const characterId = imported.character.id;
-
-  if (!isPng) {
-    return {
-      character: imported.character,
-      specVersion: imported.specVersion,
-      preservedFields: imported.preservedFields,
-      savedAvatar: false,
-    };
-  }
-
-  // 头像名用角色 id：稳定、唯一、不含用户输入，自然避开重名覆盖与非法字符
+  const cardJson = extractPngCardPayload(bytes).json;
+  const characterId = newId(ID_PREFIX.character);
   const relativePath = `${AVATAR_DIR}/${characterId}.png`;
-  const absoluteDir = path.join(userDataDir, AVATAR_DIR);
-  await mkdir(absoluteDir, { recursive: true });
-  await writeFile(path.join(absoluteDir, `${characterId}.png`), bytes);
-
-  const updated = updateCharacter(db, characterId, { avatarPath: relativePath }, now);
-  return {
-    character: updated ?? imported.character,
-    specVersion: imported.specVersion,
-    preservedFields: imported.preservedFields,
-    savedAvatar: true,
-  };
+  const avatarFile = path.join(userDataDir, relativePath);
+  await mkdir(path.dirname(avatarFile), { recursive: true });
+  try {
+    await writeFile(avatarFile, bytes);
+    const imported = importCharacter(db, cardJson, now, relativePath, { id: characterId, chubPath });
+    return { ...imported, savedAvatar: true };
+  } catch (error) {
+    await rm(avatarFile, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }

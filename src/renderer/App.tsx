@@ -11,7 +11,7 @@ import { CharactersPage, PersonasPage, SettingsPage } from "./components/Pages.j
 import { ApiKeysPage } from "./components/ApiKeysPage.js";
 import { UsagePage } from "./components/UsagePage.js";
 import { ConfirmDialog, MenuLayer, ToastLayer } from "./components/Overlays.js";
-import { SettingsNavigation } from "./components/SettingsNavigation.js";
+import { SettingsDialog } from "./components/SettingsDialog.js";
 import { UiIcon } from "./components/UiIcon.js";
 import { NewConversationWizard } from "./components/NewConversationWizard.js";
 import { useCottageController } from './app/useCottageController.js';
@@ -20,6 +20,10 @@ const api = (): Window['cottage'] => window.cottage;
 
 export function App(): JSX.Element {
   const { view, setView, characters, personas, providers, settings, storageWarning, chat, summaries, preview, tags, diagnostics, pendingDelete, setPendingDelete, deleteError, setDeleteError, renaming, setRenaming, compressCandidates, testingProviderId, providerTestResults, activeConversation, activeCharacter, hasProvider, refreshCharacters, saveCharacter, refreshPersonas, loadMessages, selectConversation, wizard, openNewConversation, closeNewConversation, confirmNewConversation, renameConversation, togglePin, openCharacterExportMenu, importing, importCharacterFile, searchCharacters, saveProvider, testProvider, requestDeleteProvider, selectProviderUsage, requestDeleteConversation, confirmDelete, sendMessage, stopGeneration, regenerate, runCompress, restoreSummary, updateSettings } = useCottageController();
+  const settingsView = useAppStore(s => s.settingsView);
+  const sidebarCollapsed = useAppStore(s => s.sidebarCollapsed);
+  const toggleSidebar = useAppStore(s => s.toggleSidebar);
+  const setSidebarCollapsed = useAppStore(s => s.setSidebarCollapsed);
   const sidebar = (
     <Sidebar
       onNewChat={() => openNewConversation()}
@@ -42,10 +46,33 @@ export function App(): JSX.Element {
 
   return (
     <>
-      <div id="shell">
+      <div id="shell" inert={settingsView !== null}>
+        <header className="window-titlebar">
+          <button
+            type="button"
+            className="icon-btn sidebar-toggle"
+            aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="primary-sidebar"
+            title={`${sidebarCollapsed ? '展开侧栏' : '收起侧栏'} Ctrl+B`}
+            onClick={toggleSidebar}
+          >
+            <UiIcon name="sidebar" />
+          </button>
+          <button
+            type="button"
+            className="window-brand"
+            onClick={() => {
+              setView('chat');
+              if (window.innerWidth <= 900) setSidebarCollapsed(true);
+            }}
+          >
+            Cottage
+          </button>
+        </header>
+        <div className="workspace-shell">
         {sidebar}
         <div className="next-workspace">
-        {view !== 'chat' && <><header className="workspace-topbar"><button className="icon-btn" aria-label="开关侧栏" onClick={() => useAppStore.getState().toggleSidebar()}><UiIcon name="sidebar"/></button><button onClick={() => setView('chat')}>返回对话</button></header>{view !== 'characters' && <SettingsNavigation/>}</>}
         {view === 'chat' ? (
           <ChatView
             conversation={activeConversation}
@@ -65,7 +92,6 @@ export function App(): JSX.Element {
                 void togglePin(activeConversation.id, activeConversation.pinnedAt === null);
               }
             }}
-            onTogglePanel={() => usePanelStore.getState().toggle()}
             onSend={sendMessage}
             onStop={() => void stopGeneration()}
             onOpenApiKeys={() => setView('apiKeys')}
@@ -129,6 +155,9 @@ export function App(): JSX.Element {
         ) : view === 'characters' ? (
           <CharactersPage
             characters={characters}
+            providers={providers}
+            defaultProviderId={settings?.chatProviderId ?? null}
+            onTranslationSaved={refreshCharacters}
             tags={tags}
             importing={importing}
             onImportFile={() => void importCharacterFile()}
@@ -152,82 +181,7 @@ export function App(): JSX.Element {
             onNewConversation={(character) => openNewConversation(character)}
             onSave={saveCharacter}
           />
-        ) : view === 'personas' ? (
-          <PersonasPage
-            personas={personas}
-            /*
-             * 新建与编辑共用一个入口（与 API Key 页同形）。
-             *
-             * 关键点是**把错误文案返回给弹窗**，而不是在这里 toast 后静默关闭：
-             * 用户填了一屏内容，失败时应该留在原地看到原因、内容还在。
-             * 「设为默认」也在这里顺手做掉——它与人设本身是两处状态
-             * （`personas.is_default` 与"谁是全局默认"），勾了就得两处都落。
-             */
-            onSave={async (input) => {
-              /*
-               * 编辑的 id 在 await 之前就定下来，后面「设为默认」用的是**它**，
-               * 不是 `update` 返回对象里的 id。理由：命令行的目标是人设本身，
-               * 不该依赖返回值再告诉我改的是谁——那是"用回参当输入"。
-               * （这个坑是测试帮我们抓到的：此前渲染层的假 API 无论更新谁
-               *   都返回同一条人设，于是"改 B 把默认落给了 A"这种情况谁也看不见。）
-               */
-              const editingId = input.id;
-              const result = editingId
-                ? await api().personas.update(editingId, {
-                    name: input.name,
-                    description: input.description,
-                  })
-                : await api().personas.create({
-                    name: input.name,
-                    description: input.description,
-                  });
-              if (!result.ok) return result.error.message;
-
-              if (input.isDefault) {
-                // 创建时 id 由主进程生成，只能从返回值拿；编辑时用编辑前那个 id
-                const targetId = editingId ?? result.data.id;
-                const changed = await api().personas.setDefault(targetId);
-                if (!changed.ok) return changed.error.message;
-                // setDefault 返回的是"改完之后"的整份列表，直接写回 store
-                useAppStore.getState().setPersonas(changed.data);
-              } else {
-                await refreshPersonas();
-              }
-              return null;
-            }}
-            onDelete={(persona) => {
-              setDeleteError(null);
-              setPendingDelete({
-                kind: 'persona',
-                id: persona.id,
-                title: persona.name,
-                paragraphs: [`「${persona.name}」`, '绑定该人设的会话会被解除绑定。'],
-              });
-            }}
-          />
-        ) : view === 'usage' ? (
-          <UsagePage providers={providers} />
-        ) : view === 'apiKeys' ? (
-          <ApiKeysPage
-            providers={providers}
-            busyId={testingProviderId}
-            testResults={providerTestResults}
-            onTest={testProvider}
-            onSave={saveProvider}
-            onDelete={requestDeleteProvider}
-            onViewUsage={(provider) =>
-              void selectProviderUsage(provider.id)
-            }
-          />
-        ) : (
-          <SettingsPage
-            providers={providers}
-            settings={settings}
-            diagnostics={diagnostics}
-            storageWarning={storageWarning}
-            onUpdateSettings={(patch) => void updateSettings(patch)}
-          />
-        )}
+        ) : null}
 
         </div>
         {view === 'chat' ? (
@@ -284,10 +238,89 @@ export function App(): JSX.Element {
             onDeleteConversation={() => {
               if (activeConversation) void requestDeleteConversation(activeConversation.id);
             }}
-            onEditCharacter={() => setView('characters')}
           />
         ) : null}
+        </div>
       </div>
+
+      {settingsView !== null && <SettingsDialog>
+        {settingsView === 'personas' ? (
+          <PersonasPage
+            personas={personas}
+            /*
+             * 新建与编辑共用一个入口（与 API Key 页同形）。
+             *
+             * 关键点是**把错误文案返回给弹窗**，而不是在这里 toast 后静默关闭：
+             * 用户填了一屏内容，失败时应该留在原地看到原因、内容还在。
+             * 「设为默认」也在这里顺手做掉——它与人设本身是两处状态
+             * （`personas.is_default` 与"谁是全局默认"），勾了就得两处都落。
+             */
+            onSave={async (input) => {
+              /*
+               * 编辑的 id 在 await 之前就定下来，后面「设为默认」用的是**它**，
+               * 不是 `update` 返回对象里的 id。理由：命令行的目标是人设本身，
+               * 不该依赖返回值再告诉我改的是谁——那是"用回参当输入"。
+               * （这个坑是测试帮我们抓到的：此前渲染层的假 API 无论更新谁
+               *   都返回同一条人设，于是"改 B 把默认落给了 A"这种情况谁也看不见。）
+               */
+              const editingId = input.id;
+              const result = editingId
+                ? await api().personas.update(editingId, {
+                    name: input.name,
+                    description: input.description,
+                  })
+                : await api().personas.create({
+                    name: input.name,
+                    description: input.description,
+                  });
+              if (!result.ok) return result.error.message;
+
+              if (input.isDefault) {
+                // 创建时 id 由主进程生成，只能从返回值拿；编辑时用编辑前那个 id
+                const targetId = editingId ?? result.data.id;
+                const changed = await api().personas.setDefault(targetId);
+                if (!changed.ok) return changed.error.message;
+                // setDefault 返回的是"改完之后"的整份列表，直接写回 store
+                useAppStore.getState().setPersonas(changed.data);
+              } else {
+                await refreshPersonas();
+              }
+              return null;
+            }}
+            onDelete={(persona) => {
+              setDeleteError(null);
+              setPendingDelete({
+                kind: 'persona',
+                id: persona.id,
+                title: persona.name,
+                paragraphs: [`「${persona.name}」`, '绑定该人设的会话会被解除绑定。'],
+              });
+            }}
+          />
+        ) : settingsView === 'usage' ? (
+          <UsagePage providers={providers} />
+        ) : settingsView === 'apiKeys' ? (
+          <ApiKeysPage
+            providers={providers}
+            busyId={testingProviderId}
+            testResults={providerTestResults}
+            onTest={testProvider}
+            onSave={saveProvider}
+            onDelete={requestDeleteProvider}
+            onViewUsage={(provider) =>
+              void selectProviderUsage(provider.id)
+            }
+          />
+        ) : (
+          <SettingsPage
+            providers={providers}
+            settings={settings}
+            diagnostics={diagnostics}
+            storageWarning={storageWarning}
+            onUpdateSettings={(patch) => void updateSettings(patch)}
+          />
+        )}
+      </SettingsDialog>}
 
       <MenuLayer />
       <ToastLayer />

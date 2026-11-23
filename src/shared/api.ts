@@ -9,6 +9,8 @@
  *   3. **类型共享**：renderer 只 import 本文件的类型，因此它拿不到任何主进程实现。
  */
 import type { ChangedEvent } from './ipc.js';
+import type { TranslationInput, TranslationResult } from './character-translation.js';
+import type { ChubPage, ChubQuery } from './chub.js';
 import type {
   AppDiagnostics,
   AppSettings,
@@ -52,6 +54,11 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: NormalizedEr
 export type Unsubscribe = () => void;
 
 export interface CottageApi {
+  chub: {
+    search(query: ChubQuery): Promise<Result<ChubPage>>;
+    cover(path: string): Promise<Result<string | null>>;
+    importCard(path: string): Promise<Result<true>>;
+  };
   providers: {
     list(): Promise<Result<Provider[]>>;
     get(id: string): Promise<Result<Provider | null>>;
@@ -70,6 +77,9 @@ export interface CottageApi {
     /** 打开文件选择框导入；PNG 卡会解析出数据，并把图片本身存成卡面图 */
     importFile(): Promise<Result<CharacterImportResult | null>>;
     update(id: string, patch: CharacterUpdatePayload): Promise<Result<Character>>;
+    translate(input: TranslationInput): Promise<Result<TranslationResult>>;
+    cancelTranslation(requestId: string): Promise<Result<boolean>>;
+    saveTranslation(requestId: string): Promise<Result<Character>>;
     delete(id: string): Promise<Result<{ ok: boolean; reason?: string }>>;
     /**
      * 导出为 v2/v3 卡（`raw_json` 为基底）。

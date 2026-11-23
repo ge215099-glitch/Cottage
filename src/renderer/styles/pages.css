@@ -1,5 +1,64 @@
 /* 角色库 / 人设 / 设置三个视图的样式（沿用同一套 token）。 */
 
+.character-library-scroll { scrollbar-gutter: stable both-edges; }
+.character-library-page { max-width: 1120px; padding-top: 38px; }
+.character-library-heading { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 23px; }
+.character-library-heading h1 { margin: 0; font-size: 27px; line-height: 1.25; letter-spacing: -.45px; }
+.character-library-page .character-library-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 114px 120px;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.character-library-page .character-library-toolbar input[type='search'] {
+  min-width: 0;
+  height: 40px;
+  border-radius: 11px;
+  padding-inline: 14px;
+}
+
+.character-library-toolbar .filter-trigger { width: 100%; padding-inline: 8px; }
+.character-library-toolbar .btn { height: 40px; border-radius: 11px; white-space: nowrap; text-decoration: none; }
+
+.character-library-tabs {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.character-library-tabs button {
+  padding: 0 2px 9px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.character-library-tabs button:hover,
+.character-library-tabs button[aria-selected='true'] { color: var(--text-primary); }
+.character-library-tabs button[aria-selected='true'] { border-bottom-color: currentColor; }
+
+.chub-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 20px;
+  color: var(--text-secondary);
+}
+
+.chub-preview a { text-decoration: none; }
+.chub-card .char-card-caption { flex-wrap: wrap; }
+.chub-card .char-card-name { flex-basis: 100%; }
+.chub-card-author { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.chub-card .chub-card-author { padding-inline: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dialog.chub-preview { width: 600px; }
+.chub-preview h3 { overflow-wrap: anywhere; }
+.chub-preview .actions { flex-wrap: wrap; }
+.chub-description { max-height: 42vh; overflow: auto; overflow-wrap: anywhere; }
+
 .page {
   flex: 1;
   min-height: 0;
@@ -50,29 +109,143 @@
   border-color: var(--accent-soft);
 }
 
-.filter-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+.filter-control {
+  position: relative;
+  flex: 0 0 auto;
 }
 
-.filter-chip {
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: var(--surface-hover);
-  font-size: var(--font-size-meta);
-  color: var(--text-secondary);
+.filter-trigger {
+  min-width: 84px;
 }
 
-.filter-chip:hover {
-  background: var(--surface-active);
+.filter-trigger .ui-icon:last-child {
+  width: 13px;
+  height: 13px;
+  margin-left: 1px;
 }
 
-.filter-chip.active {
+.filter-trigger.active {
   background: var(--surface-active);
   color: var(--text-primary);
+}
+
+.filter-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--text-primary);
+  color: var(--bg-app);
+  font-size: 11px;
+  line-height: 18px;
   font-weight: 600;
+}
+
+.filter-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 248px;
+  max-height: min(420px, calc(100dvh - 150px));
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-menu);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-menu);
+}
+
+.filter-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.filter-menu-head strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.filter-clear {
+  padding: 3px 4px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+  border-radius: 5px;
+}
+
+.filter-clear:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.filter-clear:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.filter-menu-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.filter-menu-label {
+  padding: 0 4px 4px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.filter-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 4px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.filter-option:hover {
+  background: var(--surface-hover);
+}
+
+.filter-option input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent-soft);
+  flex: 0 0 auto;
+}
+
+.filter-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-option-count {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.filter-empty {
+  margin: 8px 4px 4px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-meta);
 }
 
 /* ---- 列表卡片 ---- */
@@ -139,8 +312,8 @@
 .char-grid {
   display: grid;
   /* 列宽自适应，避免固定列数在窄窗口下把卡片压扁 */
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(174px, 1fr));
+  gap: 22px 18px;
 }
 
 .char-card {
@@ -161,15 +334,20 @@
    *   这里从根上把对齐写了，figure 那条 width 就只是冗余而不是救命稻草。）
    */
   align-items: stretch;
-  gap: var(--space-2);
-  padding: 0;
+  gap: 7px;
+  padding: 0 0 9px;
   border: none;
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
   min-width: 0;
+  border-radius: 15px;
+  overflow: hidden;
+  transition: background 140ms ease;
 }
+
+.char-card:hover, .char-card:focus-visible { background: var(--surface-hover); }
 
 .char-card-figure {
   position: relative;
@@ -177,10 +355,12 @@
   width: 100%;
   /* 2:3 竖版贴近角色卡美术；固定比例保证网格不会因为图片尺寸参差而跳动 */
   aspect-ratio: 2 / 3;
-  border-radius: var(--radius-card);
+  border-radius: 13px;
   overflow: hidden;
   background: var(--surface-active);
   border: 1px solid var(--border-subtle);
+  transition: border-color 140ms ease;
+  flex: 0 0 auto;
 }
 
 .char-card-figure img {
@@ -244,7 +424,9 @@
 }
 
 .char-card-name {
-  font-size: var(--font-size-list);
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 580;
   line-height: var(--line-height-list);
   /* 名字只留一行，长了省略：两行会让网格行高不齐 */
   overflow: hidden;
@@ -262,6 +444,15 @@
   min-width: 0;
   max-width: 100%;
 }
+
+.char-card-description { padding: 0 10px; min-height: 34px; color: var(--text-tertiary); font-size: 11px; line-height: 17px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.char-card-tags { display: flex; align-items: center; gap: 5px; min-height: 22px; padding: 0 10px; overflow: hidden; }
+.char-card-tags .tag-chip { height: 20px; font-size: 10px; white-space: nowrap; }
+.char-card-more-tags { color: var(--text-tertiary); font-size: 10px; white-space: nowrap; }
+.character-empty { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 16vh 24px; }
+.character-empty strong { color: var(--text-primary); font-size: 16px; font-weight: 550; }
+.character-empty span { color: var(--text-tertiary); font-size: 13px; }
+.character-empty .btn { margin-top: 12px; }
 
 /* ---- 分类标签（角色详情弹窗里只读展示） ---- */
 .tag-chip {
@@ -450,10 +641,17 @@
 }
 
 /* 编辑器（角色卡）*/
-.editor-grid {
-  display: grid;
-  gap: 12px;
-}
+.editor-grid { display: grid; gap: 14px; }
+.editor-grid-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.editor-section + .editor-section { margin-top: 27px; padding-top: 24px; border-top: 1px solid var(--border-subtle); }
+.editor-section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 15px; }
+.editor-section-heading h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.editor-section-heading > span { color: var(--text-tertiary); font-size: 11px; }
+.character-form .field { margin: 0; }
+.character-form .field label { display: block; margin-bottom: 7px; font-size: 12px; }
+.character-form .field input, .character-form .field textarea { width: 100%; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--bg-app); padding: 10px 11px; font-size: 13px; line-height: 20px; outline: none; resize: vertical; }
+.character-form .field input { height: 40px; }
+.character-form .field input:focus, .character-form .field textarea:focus { border-color: var(--accent-soft); }
 
 .editor-grid textarea {
   width: 100%;

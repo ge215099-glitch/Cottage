@@ -4,7 +4,7 @@
  *
  * 交互契约（用户明确要求的那套）：
  *   - 卡片是 **2:3 竖版**：上面图片、下面名字；
- *   - **不显示描述**（信息靠 `title` 悬停提示与详情弹窗承载）；
+ *   - 卡片只展示名称，详情弹窗显示简介和标签；
  *   - 没有图片的角色卡用**灰色色块占位**，不留空洞；
  *   - 点卡片打开**详情弹窗**，全部动作（新对话 / 编辑 / 收藏 / 导出 / 删除）在里面。
  *
@@ -21,7 +21,9 @@ import {
   type CharactersPageProps,
 } from '../../src/renderer/components/Pages.js';
 import { useMenuStore } from '../../src/renderer/stores/menu.js';
-import { makeCharacter } from './helpers.js';
+import { installFakeApi, makeCharacter } from './helpers.js';
+
+const translationProps = { providers: [], defaultProviderId: null, onTranslationSaved: async () => undefined };
 
 afterEach(() => {
   cleanup();
@@ -31,6 +33,7 @@ afterEach(() => {
 
 function setup(overrides: Partial<CharactersPageProps> = {}) {
   const props: CharactersPageProps = {
+    ...translationProps,
     characters: [
       makeCharacter(),
       makeCharacter({ id: 'chr_2', name: '老周', description: '修表铺的老板。' }),
@@ -51,20 +54,54 @@ function setup(overrides: Partial<CharactersPageProps> = {}) {
 }
 
 describe('角色库卡片网格', () => {
+  it('打开 Chub 后加载热度页，并支持关键词、翻页和预览导入', async () => {
+    const user = userEvent.setup();
+    const card = { path: 'author/space-cat', name: '太空猫', description: '在太空旅行。', imported: false };
+    const { spies } = installFakeApi({ overrides: { 'chub.search': async () => ({ ok: true, data: { cards: [card], hasNext: true } }) } });
+    const onTranslationSaved = vi.fn(async () => undefined);
+    setup({ onTranslationSaved });
+    const localTab = screen.getByRole('tab', { name: '我的卡片' });
+    expect(localTab.getAttribute('aria-selected')).toBe('true');
+    expect(spies['chub.search']).not.toHaveBeenCalled();
+    const localSearch = screen.getByRole('searchbox', { name: '搜索角色' });
+    await user.type(localSearch, '爱丽丝');
+    localTab.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Chub 搜索' }));
+    expect(spies['chub.search']).toHaveBeenCalledWith({ keyword: '', page: 1 });
+    const toolbar = within(screen.getByRole('search', { name: 'Chub 搜索' }));
+    expect(toolbar.getByRole('button', { name: '搜索' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '导入角色卡' })).toBeNull();
+    expect(screen.queryByText('按热度排序')).toBeNull();
+    const popular = new URL(toolbar.getByRole('link', { name: '在 Chub 打开' }).getAttribute('href')!);
+    expect(Object.fromEntries(popular.searchParams)).toMatchObject({ namespace: 'characters', sort: 'star_count', sort_dir: 'desc' });
+    await user.type(screen.getByRole('searchbox', { name: '搜索 Chub 角色卡' }), '太空 & 猫{Enter}');
+    expect(spies['chub.search']).toHaveBeenLastCalledWith({ keyword: '太空 & 猫', page: 1 });
+    await user.click(await screen.findByRole('button', { name: '下一页' }));
+    expect(spies['chub.search']).toHaveBeenLastCalledWith({ keyword: '太空 & 猫', page: 2 });
+    await user.click(await screen.findByRole('button', { name: '预览 Chub 角色卡：太空猫' }));
+    const preview = screen.getByRole('dialog', { name: '太空猫' });
+    expect(within(preview).getByText(card.description)).toBeTruthy();
+    await user.click(within(preview).getByRole('button', { name: '导入到我的卡片' }));
+    expect(spies['chub.importCard']).toHaveBeenCalledWith(card.path);
+    expect(within(preview).getByRole('button', { name: '已导入' }).hasAttribute('disabled')).toBe(true);
+    expect(onTranslationSaved).toHaveBeenCalledWith('爱丽丝');
+    await user.click(within(preview).getByRole('button', { name: '关闭' }));
+    await user.click(localTab);
+    expect((localSearch as HTMLInputElement).value).toBe('爱丽丝');
+    expect(screen.getByRole('button', { name: '导入角色卡' })).toBeTruthy();
+  });
+
   it('每张角色卡渲染一张卡片，卡片上是名字', () => {
     setup();
     expect(screen.getByRole('button', { name: '查看角色卡：爱丽丝' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '查看角色卡：老周' })).toBeTruthy();
   });
 
-  it('网格里不显示描述（描述移到 title 提示与详情弹窗）', () => {
+  it('网格只展示角色名称，长简介留在详情中', () => {
     setup();
-    // 描述文本不该出现在卡片里
     expect(screen.queryByText('钟表店学徒，对时间异常敏感。')).toBeNull();
-    // 但信息没丢：挂在 title 上
-    expect(
-      screen.getByRole('button', { name: '查看角色卡：爱丽丝' }).getAttribute('title'),
-    ).toBe('钟表店学徒，对时间异常敏感。');
+    expect(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }).getAttribute('title')).toBe('爱丽丝');
   });
 
   it('没有图片的角色卡用灰色色块占位，不渲染 img', () => {
@@ -99,11 +136,54 @@ describe('角色库卡片网格', () => {
     expect(screen.queryByTitle('已收藏')).toBeNull();
   });
 
-  it('标签筛选点击后按标签过滤（筛选逻辑仍走主进程回调）', async () => {
+  it('筛选面板支持按标签多选，并隐藏标签列表直到打开筛选', async () => {
     const user = userEvent.setup();
-    const { props } = setup();
-    await user.click(screen.getByRole('button', { name: /奇幻/ }));
-    expect(props.onSearch).toHaveBeenCalled();
+    setup({
+      characters: [
+        makeCharacter(),
+        makeCharacter({ id: 'chr_2', name: '老周', tags: ['科幻'] }),
+      ],
+      tags: [
+        { tag: '奇幻', count: 1 },
+        { tag: '科幻', count: 1 },
+      ],
+    });
+
+    expect(screen.queryByRole('checkbox', { name: /奇幻/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /筛选/ }));
+    const fantasy = screen.getByRole('checkbox', { name: /奇幻/ });
+    const scienceFiction = screen.getByRole('checkbox', { name: /科幻/ });
+    expect(fantasy).toBeTruthy();
+    expect(scienceFiction).toBeTruthy();
+
+    await user.click(fantasy);
+    await user.click(scienceFiction);
+    expect(screen.getByRole('button', { name: '查看角色卡：爱丽丝' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '查看角色卡：老周' })).toBeTruthy();
+  });
+
+  it('筛选面板可以选中收藏，并显示当前筛选数量', async () => {
+    const user = userEvent.setup();
+    setup({
+      characters: [makeCharacter({ favorite: true }), makeCharacter({ id: 'chr_2', name: '老周' })],
+      tags: [{ tag: '奇幻', count: 2 }],
+    });
+
+    await user.click(screen.getByRole('button', { name: /^筛选/ }));
+    await user.click(screen.getByRole('checkbox', { name: /收藏/ }));
+    expect(screen.getByRole('button', { name: /^筛选/ }).textContent).toContain('1');
+    expect(screen.getByRole('button', { name: '查看角色卡：爱丽丝' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看角色卡：老周' })).toBeNull();
+  });
+
+  it('点击筛选面板外或按 Esc 会关闭面板，但保留筛选条件', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: /^筛选/ }));
+    await user.click(screen.getByRole('checkbox', { name: /收藏/ }));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('checkbox', { name: /收藏/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^筛选/ }).textContent).toContain('1');
   });
 });
 
@@ -157,6 +237,7 @@ describe('导入角色卡的按钮状态', () => {
       onDelete: vi.fn(),
       onExport: vi.fn(),
       onNewConversation: vi.fn(),
+      ...translationProps,
       onSave: vi.fn(async () => null),
     } satisfies CharactersPageProps;
 
@@ -197,6 +278,7 @@ describe('搜索 effect 不被回调身份牵着走', () => {
             重新渲染 {tick}
           </button>
           <CharactersPage
+            {...translationProps}
             characters={[makeCharacter()]}
             tags={[]}
             importing={false}
@@ -234,6 +316,7 @@ describe('搜索 effect 不被回调身份牵着走', () => {
     function Harness({ tag }: { tag: string }): JSX.Element {
       return (
         <CharactersPage
+          {...translationProps}
           characters={[makeCharacter()]}
           tags={[]}
           importing={false}
@@ -261,13 +344,15 @@ describe('搜索 effect 不被回调身份牵着走', () => {
 describe('角色详情弹窗', () => {
   it('点卡片打开弹窗，并显示详情与全部动作', async () => {
     const user = userEvent.setup();
-    setup();
+    setup({ characters: [makeCharacter({ tags: ['奇幻', '冒险'] })] });
     await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
 
     const dialog = screen.getByRole('dialog', { name: '角色详情：爱丽丝' });
     expect(within(dialog).getByText('钟表店学徒，对时间异常敏感。')).toBeTruthy();
-    expect(within(dialog).getByText('奇幻')).toBeTruthy();
-    for (const label of ['新对话', '编辑', '收藏', '导出角色卡', '删除角色卡', '关闭']) {
+    const tags = within(dialog).getByRole('list', { name: '角色标签' });
+    expect(tags.previousElementSibling).toBe(within(dialog).getByRole('heading', { name: '爱丽丝' }));
+    expect(within(tags).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['奇幻', '冒险']);
+    for (const label of ['新对话', '编辑', '收藏', '导出角色卡', '删除角色卡', '关闭角色详情']) {
       expect(within(dialog).getByRole('button', { name: label })).toBeTruthy();
     }
   });
@@ -403,7 +488,7 @@ describe('角色详情弹窗', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '关闭' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '关闭角色详情' }));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -411,7 +496,7 @@ describe('角色详情弹窗', () => {
     const user = userEvent.setup();
     setup({
       characters: [
-        makeCharacter({ description: '', personality: '', scenario: '', firstMes: '' }),
+        makeCharacter({ description: '', personality: '', scenario: '', firstMes: '', tags: [] }),
       ],
     });
     await user.click(screen.getByRole('button', { name: '查看角色卡：爱丽丝' }));
@@ -502,6 +587,7 @@ describe('收藏状态在弹窗里看得见', () => {
       const [character, setCharacter] = useState(makeCharacter({ favorite: false }));
       return (
         <CharactersPage
+          {...translationProps}
           characters={[character]}
           tags={[{ tag: '奇幻', count: 1 }]}
           importing={false}

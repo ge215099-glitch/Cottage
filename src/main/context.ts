@@ -10,6 +10,7 @@
  */
 import type { DatabaseDriver } from './db/driver.js';
 import type { NormalizedError } from '@shared/types.js';
+import { CharacterTranslationService } from './services/character-translation.js';
 
 /** 在飞的一次流式生成。 */
 export interface ActiveStream {
@@ -21,6 +22,7 @@ export interface ActiveStream {
 
 export interface AppContext {
   db: DatabaseDriver;
+  characterTranslations: CharacterTranslationService;
   /** 每条会话至多一个在飞的流 */
   streams: Map<string, ActiveStream>;
   /** 主进程 → renderer 的事件发送器；由窗口层注入，未就绪时为 null */
@@ -36,7 +38,7 @@ export function createAppContext(
   dbPath: string,
   userDataDir: string,
 ): AppContext {
-  return { db, streams: new Map(), emit: null, dbPath, userDataDir };
+  return { db, characterTranslations: new CharacterTranslationService(db), streams: new Map(), emit: null, dbPath, userDataDir };
 }
 
 /** 发送事件（窗口未就绪时静默丢弃，不抛异常）。 */
@@ -55,6 +57,7 @@ export function abortConversation(ctx: AppContext, conversationId: string): bool
 
 /** 中断全部在飞的流（窗口关闭 / 应用退出时用）。 */
 export function abortAll(ctx: AppContext): number {
+  ctx.characterTranslations.cancel();
   const count = ctx.streams.size;
   for (const active of ctx.streams.values()) active.controller.abort();
   ctx.streams.clear();

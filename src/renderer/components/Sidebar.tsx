@@ -15,24 +15,22 @@ export interface SidebarProps {
   onOpenPersonaMenu(rect: DOMRect, trigger: HTMLElement): void;
 }
 export function Sidebar(props: SidebarProps) {
-  const { view, setView, conversations, sidebarCollapsed, toggleSidebar, setSidebarCollapsed } = useAppStore();
+  const { view, settingsView, setView, conversations, sidebarCollapsed, toggleSidebar, setSidebarCollapsed } = useAppStore();
   const activeId = useChatStore(s => s.conversationId);
-  const [search, setSearch] = useState('');
   const [renaming, setRenaming] = useState<Conversation | null>(null);
   const [title, setTitle] = useState('');
   const renameRef = useRef<HTMLInputElement>(null);
   const renameCanceled = useRef(false);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const groups = useMemo(() => groupConversations(conversations.filter(c => c.title.toLocaleLowerCase().includes(search.toLocaleLowerCase()))), [conversations, search]);
+  const groups = useMemo(() => groupConversations(conversations), [conversations]);
   useEffect(() => { renameRef.current?.focus(); renameRef.current?.select(); }, [renaming]);
   useEffect(() => {
-    const listener = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault(); setSidebarCollapsed(false); searchRef.current?.focus();
-      }
+    let narrow = window.innerWidth <= 900;
+    const resize = () => {
+      const next = window.innerWidth <= 900;
+      if (next !== narrow) { setSidebarCollapsed(next); narrow = next; }
     };
-    document.addEventListener('keydown', listener);
-    return () => document.removeEventListener('keydown', listener);
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
   }, [setSidebarCollapsed]);
   const navigate = (action: () => void) => { action(); if (window.innerWidth <= 900) setSidebarCollapsed(true); };
   const menu = (c: Conversation, trigger: HTMLElement) => useMenuStore.getState().open(
@@ -49,19 +47,19 @@ export function Sidebar(props: SidebarProps) {
   </div>;
   return <>
     {!sidebarCollapsed && <button className="mobile-backdrop" aria-label="关闭侧栏" onClick={toggleSidebar}/>}
-    <aside className={`next-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} aria-label="主导航">
-      <div className="next-brand"><button className="brand-button" onClick={() => navigate(() => setView('chat'))}><UiIcon name="home"/><span>Cottage</span></button><button className="icon-btn" aria-label="收起侧栏" title="收起侧栏 Ctrl+B" onClick={toggleSidebar}><UiIcon name="sidebar"/></button></div>
-      <nav className="primary-nav">
+    <aside id="primary-sidebar" className={`next-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} aria-label="主导航" aria-hidden={sidebarCollapsed} inert={sidebarCollapsed}>
+      <div className="next-sidebar-content">
+        <nav className="primary-nav">
         <button className="nav-row" onClick={() => navigate(props.onNewChat)}><UiIcon name="new"/><span>新对话</span><kbd>Ctrl N</kbd></button>
-        <label className="nav-row search-control"><UiIcon name="search"/><input ref={searchRef} placeholder="搜索对话" aria-label="搜索对话" value={search} onChange={e => setSearch(e.target.value)}/></label>
         <button className={`nav-row ${view === 'characters' ? 'selected' : ''}`} onClick={() => navigate(() => setView('characters'))}><UiIcon name="library"/><span>角色库</span></button>
-      </nav>
-      <div className="next-conversations">
+        </nav>
+        <div className="next-conversations">
         {!!groups.pinned.length && <><h3>已置顶</h3>{groups.pinned.map(row)}</>}
-        <h3>{search ? '搜索结果' : '你的对话'}</h3>{groups.rest.map(row)}
-        {!groups.pinned.length && !groups.rest.length && <p className="sidebar-empty">{search ? '没有找到相关对话' : '故事会从这里开始'}</p>}
+        <h3>你的对话</h3>{groups.rest.map(row)}
+        {!groups.pinned.length && !groups.rest.length && <p className="sidebar-empty">还没有对话</p>}
+        </div>
+        <div className="next-sidebar-footer"><button className={`nav-row ${settingsView ? 'selected' : ''}`} onClick={() => setView('settings')}><UiIcon name="settings"/><span>设置</span></button></div>
       </div>
-      <div className="next-sidebar-footer"><button className={`nav-row ${['settings', 'apiKeys', 'usage', 'personas'].includes(view) ? 'selected' : ''}`} onClick={() => navigate(() => setView('settings'))}><UiIcon name="settings"/><span>设置</span></button><span className="local-note"><i/>对话保存在此设备</span></div>
     </aside>
   </>;
 }

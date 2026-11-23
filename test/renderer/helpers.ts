@@ -260,6 +260,11 @@ export function installFakeApi(options: FakeApiOptions = {}): {
   };
 
   const api = {
+    chub: {
+      search: method('chub.search', async () => ok({ cards: [], hasNext: false })),
+      cover: method('chub.cover', async () => ok(null)),
+      importCard: method('chub.importCard', async () => ok(true)),
+    },
     providers: {
       list: method('providers.list', async () => ok(options.providers ?? [makeProvider()])),
       get: method('providers.get', async () => ok(makeProvider())),
@@ -286,6 +291,9 @@ export function installFakeApi(options: FakeApiOptions = {}): {
       ),
       importFile: method('characters.importFile', async () => ok(null)),
       update: method('characters.update', async () => ok(makeCharacter())),
+      translate: method('characters.translate', async () => ok({ status: 'already-zh' })),
+      cancelTranslation: method('characters.cancelTranslation', async () => ok(true)),
+      saveTranslation: method('characters.saveTranslation', async () => ok(makeCharacter())),
       delete: method('characters.delete', async () => ok({ ok: true })),
       // 默认"用户在保存对话框里点了取消"：path 为 null 但内容已生成
       export: method('characters.export', async (_id: unknown, format: unknown) =>

@@ -130,21 +130,25 @@
   max-width: 86%;
 }
 
-/* ---- 生成中的光标 ---- */
-.cursor {
-  display: inline-block;
-  width: 2px;
-  height: 17px;
-  background: var(--accent-soft);
-  vertical-align: -3px;
-  margin-left: 2px;
-  animation: blink 1s steps(1) infinite;
+/* ---- 等待首字；正文输出后不附加光标 ---- */
+.stream-waiting {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
 }
-
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
+.stream-orb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  animation: stream-breathe 1.4s ease-in-out infinite;
+}
+@keyframes stream-breathe {
+  0%, 100% { transform: scale(.85); opacity: .65; }
+  50% { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stream-orb { animation: none; }
 }
 
 /* ---- 行内编辑 ---- */

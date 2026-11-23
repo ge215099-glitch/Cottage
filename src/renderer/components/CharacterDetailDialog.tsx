@@ -15,6 +15,7 @@
 import { useEffect, useRef } from 'react';
 import type { JSX } from 'react';
 import type { Character } from '@shared/types.js';
+import { CHARACTER_LANGUAGE_LABEL } from '@shared/character-translation.js';
 import { buildAvatarUrl } from '@shared/avatar-url.js';
 import { isMenuOpen, useMenuStore } from '../stores/menu.js';
 import { Icons } from './Icons.js';
@@ -25,6 +26,7 @@ export interface CharacterDetailDialogProps {
   onNewConversation(): void;
   onToggleFavorite(): void;
   onEdit(): void;
+  onTranslate(): void;
   /** 导出：把自己当锚点交给调用方开格式菜单 */
   onExport(rect: DOMRect, trigger: HTMLElement): void;
   onDelete(): void;
@@ -36,6 +38,7 @@ export function CharacterDetailDialog({
   onNewConversation,
   onToggleFavorite,
   onEdit,
+  onTranslate,
   onExport,
   onDelete,
 }: CharacterDetailDialogProps): JSX.Element {
@@ -69,7 +72,6 @@ export function CharacterDetailDialog({
 
   const avatarUrl = buildAvatarUrl(character.avatarPath);
   const facts: Array<[string, string]> = [
-    ['描述', character.description],
     ['性格', character.personality],
     ['场景', character.scenario],
     ['开场白', character.firstMes],
@@ -91,6 +93,7 @@ export function CharacterDetailDialog({
           aria-label={`角色详情：${character.name}`}
           tabIndex={-1}
         >
+          <button type="button" className="char-detail-close" aria-label="关闭角色详情" onClick={onClose}>×</button>
           <div className="char-detail-head">
             <div className="char-detail-figure">
               {avatarUrl ? (
@@ -104,6 +107,7 @@ export function CharacterDetailDialog({
             <div className="char-detail-info">
               <h3>
                 {character.name}
+                {character.languageMode ? <span className="character-language-badge">{CHARACTER_LANGUAGE_LABEL[character.languageMode]}</span> : null}
                 {character.favorite ? (
                   // 与卡片角标、右侧按钮同一个实心星；此前这里是与字体绑定的文本 `★`
                   <span className="fav" title="已收藏">
@@ -111,73 +115,24 @@ export function CharacterDetailDialog({
                   </span>
                 ) : null}
               </h3>
-              {character.tags.length ? (
-                <div className="char-detail-tags">
-                  {character.tags.map((tag) => (
-                    <span className="tag-chip" key={tag}>
-                      {tag}
-                    </span>
+              {character.tags.length > 0 && (
+                <ul className="char-detail-tags" aria-label="角色标签">
+                  {[...new Set(character.tags)].map((tag) => (
+                    <li key={tag} className="tag-chip">{tag}</li>
                   ))}
-                </div>
-              ) : null}
-              <div className="char-detail-actions">
-                <button
-                  type="button"
-                  className="btn primary"
-                  style={{ width: 'auto' }}
-                  onClick={onNewConversation}
-                >
-                  新对话
-                </button>
-                <button type="button" className="btn" onClick={onEdit}>
-                  编辑
-                </button>
-                {/*
-                 * 图标必须跟着状态走：空心 = 未收藏、实心 = 已收藏。
-                 *
-                 * 这里此前**两种状态都画空心星**，于是"收藏了没有"在按钮上完全看不出来，
-                 * 用户点完只能靠标题栏里那个小星去猜有没有生效——等于没有反馈。
-                 * `aria-pressed` 一并给出，读屏用户和视觉用户拿到的是同一个事实。
-                 */}
-                <button
-                  type="button"
-                  className={character.favorite ? 'icon-btn fav-on' : 'icon-btn'}
-                  title={character.favorite ? '取消收藏' : '收藏'}
-                  aria-label={character.favorite ? '取消收藏' : '收藏'}
-                  aria-pressed={character.favorite}
-                  onClick={onToggleFavorite}
-                >
-                  {character.favorite ? Icons.starFilled() : Icons.star()}
-                </button>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  title="导出"
-                  aria-label="导出角色卡"
-                  aria-haspopup="menu"
-                  onClick={(event) =>
-                    onExport(
-                      event.currentTarget.getBoundingClientRect(),
-                      event.currentTarget,
-                    )
-                  }
-                >
-                  {Icons.export()}
-                </button>
-                <button
-                  type="button"
-                  className="icon-btn danger"
-                  title="删除"
-                  aria-label="删除角色卡"
-                  onClick={onDelete}
-                >
-                  {Icons.trash()}
-                </button>
-              </div>
+                </ul>
+              )}
             </div>
           </div>
 
           <div className="char-detail-body">
+            {character.description.trim() ? (
+              <div className="char-detail-field">
+                <div className="char-detail-label">简介</div>
+                <div className="char-detail-value">{character.description}</div>
+              </div>
+            ) : null}
+            {facts.filter(([, value]) => value.trim()).length ? <h4>角色设定</h4> : null}
             {facts
               .filter(([, value]) => value.trim())
               .map(([label, value]) => (
@@ -188,9 +143,19 @@ export function CharacterDetailDialog({
               ))}
           </div>
 
-          <div className="actions">
-            <button type="button" className="btn" onClick={onClose}>
-              关闭
+          <div className="char-detail-footer">
+            <button type="button" className="btn primary" onClick={onNewConversation}>新对话</button>
+            <button type="button" className="btn" onClick={onEdit}>编辑</button>
+            <button type="button" className="btn" onClick={onTranslate}>转换语言</button>
+            <span className="char-detail-footer-spacer" />
+            <button type="button" className={character.favorite ? 'icon-btn fav-on' : 'icon-btn'} title={character.favorite ? '取消收藏' : '收藏'} aria-label={character.favorite ? '取消收藏' : '收藏'} aria-pressed={character.favorite} onClick={onToggleFavorite}>
+              {character.favorite ? Icons.starFilled() : Icons.star()}
+            </button>
+            <button type="button" className="icon-btn" title="导出" aria-label="导出角色卡" aria-haspopup="menu" onClick={(event) => onExport(event.currentTarget.getBoundingClientRect(), event.currentTarget)}>
+              {Icons.export()}
+            </button>
+            <button type="button" className="icon-btn danger" title="删除" aria-label="删除角色卡" onClick={onDelete}>
+              {Icons.trash()}
             </button>
           </div>
         </div>

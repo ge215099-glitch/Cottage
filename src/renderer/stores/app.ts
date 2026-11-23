@@ -23,6 +23,7 @@ import type {
  * 因此导航只列这些"去别处"的入口。
  */
 export type ViewKey = 'chat' | 'characters' | 'personas' | 'usage' | 'apiKeys' | 'settings';
+export type SettingsViewKey = Exclude<ViewKey, 'chat' | 'characters'>;
 
 /** 用量页的筛选条件；默认"本月 + 全部 Key"。 */
 export interface UsageFilter {
@@ -33,7 +34,8 @@ export interface UsageFilter {
 export const DEFAULT_USAGE_FILTER: UsageFilter = { range: 'month', providerId: null };
 
 export interface AppState {
-  view: ViewKey;
+  view: 'chat' | 'characters';
+  settingsView: SettingsViewKey | null;
   sidebarCollapsed: boolean;
 
   conversations: Conversation[];
@@ -52,6 +54,7 @@ export interface AppState {
   lastError: NormalizedError | null;
 
   setView(view: ViewKey): void;
+  closeSettings(): void;
   toggleSidebar(): void;
   setSidebarCollapsed(collapsed: boolean): void;
 
@@ -70,6 +73,7 @@ export interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   view: 'chat',
+  settingsView: null,
   sidebarCollapsed: typeof window !== 'undefined' && window.innerWidth <= 900,
   conversations: [],
   characters: [],
@@ -80,7 +84,10 @@ export const useAppStore = create<AppState>((set) => ({
   storageWarning: null,
   lastError: null,
 
-  setView: (view) => set({ view }),
+  setView: (view) => set(view === 'chat' || view === 'characters'
+    ? { view, settingsView: null }
+    : { settingsView: view }),
+  closeSettings: () => set({ settingsView: null }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
 

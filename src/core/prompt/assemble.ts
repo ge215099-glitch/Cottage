@@ -25,6 +25,15 @@ import { replaceVariables, type VariableContext } from './variables.js';
 
 /** `<START>` 是 SillyTavern 的示例分隔符；没有它时整段按一个例子处理。 */
 const START_MARKER = /<START>/gi;
+const BILINGUAL_REPLY = `回复使用中英双语，以自然段为单位配对。每组先写一段完整的英文，再换一行写对应的简体中文，组内不留空行。每段可以包含多句话。每组之间恰好空一行。
+对白、动作描写和旁白都采用这个格式。角色卡示例和历史回复用于参考内容与语气，当前回复的排版以这里的要求为准。不加语言标签，保留角色和世界观的专有名词。
+
+The lantern flickered. She stepped closer to the gate.
+灯笼忽明忽暗。她朝大门走近了些。
+
+“Are you coming?” She waited by the gate.
+“你来吗？”她在门边等着。`;
+const CHINESE_REPLY = '请用简体中文回复，保持角色和世界观的专有名词原样。';
 
 /** 默认 system 拼接顺序与分隔（产品设计文档 3.3 第 1 条）。 */
 function buildDefaultSystem(character: CharacterCard): string {
@@ -143,7 +152,9 @@ export function assemblePrompt(input: AssembleInput): PromptSpec {
   }
 
   // 5. post_history
-  pushSegment(segments, 'postHistory', 'system', v(character.postHistoryInstructions));
+  const replyLanguage = character.languageMode === 'bilingual' ? BILINGUAL_REPLY : character.languageMode === 'zh' ? CHINESE_REPLY : '';
+  const postHistory = [v(character.postHistoryInstructions), replyLanguage].filter((text) => text.trim()).join('\n\n');
+  pushSegment(segments, 'postHistory', 'system', postHistory);
 
   // 6. user
   pushSegment(segments, 'user', 'user', v(userInput));

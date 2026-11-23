@@ -4,7 +4,7 @@
  * 规格要点：
  *   - 角色消息**无气泡**（全宽文本 + 名字一行）；用户消息是右对齐气泡、不显示名字。
  *   - 悬停才出现工具条（复制 / 编辑 / 重新生成 / ⋯）。
- *   - 生成中：末尾 2px 强调色光标闪烁，工具条换成「停止」。
+ *   - 生成中：等待首字时显示呼吸圆点，正文平滑出现；工具条换成「停止」。
  *   - 中断：气泡下方 `已中断` + 「继续」按钮。
  *   - 元信息默认隐藏，悬停时显示（model / 用时 / tokens / 精确或估算）。
  *   - 界面**不使用头像**。
@@ -16,10 +16,12 @@ import { useMenuStore } from '../stores/menu.js';
 import { Icons } from './Icons.js';
 import { MarkdownBody } from './MarkdownBody.js';
 import { ConfirmDialog } from './Overlays.js';
+import { useStreamingText } from './useStreamingText.js';
 
 export interface MessageItemProps {
   message: Message;
   characterName: string;
+  bilingual?: boolean;
   /** 全局「显示 token 元信息」开关 */
   showMetaAlways: boolean;
   /** 本条是否正在流式生成 */
@@ -68,6 +70,7 @@ function MetaLine({ message, showMetaAlways }: { message: Message; showMetaAlway
 function MessageItemInner({
   message,
   characterName,
+  bilingual,
   showMetaAlways,
   streaming,
   isLastAssistant,
@@ -87,6 +90,7 @@ function MessageItemInner({
   const openMenu = useMenuStore((s) => s.open);
 
   const isUser = message.role === 'user';
+  const displayedContent = useStreamingText(message.content, streaming && !isUser);
   const cascadeCount = useMemo(
     () => (editing && invalidatedSummaries ? invalidatedSummaries(message) : 0),
     [editing, invalidatedSummaries, message],
@@ -213,8 +217,9 @@ function MessageItemInner({
             message.content
           ) : (
             <>
-              <MarkdownBody content={message.content} />
-              {streaming ? <span className="cursor" aria-hidden="true" /> : null}
+              {streaming && !displayedContent ? (
+                <div className="stream-waiting" role="status" aria-label="正在生成回复"><span className="stream-orb" aria-hidden="true" /></div>
+              ) : <MarkdownBody content={displayedContent} preserveLineBreaks={Boolean(bilingual && !isUser)} />}
             </>
           )}
         </div>

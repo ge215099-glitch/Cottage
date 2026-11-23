@@ -288,11 +288,32 @@
 /* ---- 角色卡详情弹窗 ---- */
 
 .dialog.char-detail {
-  width: 520px;
-  max-height: calc(100vh - 80px);
+  width: 760px;
+  max-height: calc(100dvh - 56px);
   display: flex;
   flex-direction: column;
+  padding: 26px;
+  border-radius: 20px;
+  min-height: 0;
+  overflow: hidden;
 }
+
+.char-detail-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.char-detail-close:hover { color: var(--text-primary); background: var(--surface-active); }
 
 /* 与向导同理：容器 tabindex=-1、不进 Tab 序列，不需要焦点环 */
 .dialog.char-detail:focus,
@@ -302,13 +323,15 @@
 
 .char-detail-head {
   display: flex;
-  gap: var(--space-4);
+  gap: 24px;
   align-items: flex-start;
+  flex: 0 0 auto;
+  padding-right: 34px;
 }
 
 .char-detail-figure {
   flex: 0 0 auto;
-  width: 120px;
+  width: 152px;
   aspect-ratio: 2 / 3;
   border-radius: var(--radius-card);
   overflow: hidden;
@@ -338,8 +361,9 @@
 }
 
 .char-detail-info h3 {
-  margin: 0 0 var(--space-2);
-  font-size: 17px;
+  margin: 0 0 10px;
+  font-size: 24px;
+  line-height: 1.25;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -356,8 +380,28 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
-  margin-bottom: var(--space-3);
+  margin: 0;
+  padding: 0;
+  max-height: min(120px, 20dvh);
+  overflow-y: auto;
+  list-style: none;
 }
+
+.char-detail-tags .tag-chip {
+  height: auto;
+  min-height: 22px;
+  max-width: 100%;
+  padding-block: 2px;
+  overflow-wrap: anywhere;
+}
+
+.char-detail-description { margin: 13px 0 18px !important; white-space: pre-wrap; font-size: 13px !important; line-height: 1.75 !important; color: var(--text-secondary); }
+.char-detail-body h4 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+.char-detail-field { padding: 13px 0; border-top: 1px solid var(--border-subtle); }
+.char-detail-label { font-size: 11px; letter-spacing: .02em; }
+.char-detail-value { font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.char-detail-footer { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; border-top: 1px solid var(--border-subtle); padding-top: 14px; margin-top: 12px; }
+.char-detail-footer-spacer { flex: 1; }
 
 .char-detail-actions {
   display: flex;
@@ -393,6 +437,8 @@
 .char-detail-body {
   margin-top: var(--space-4);
   overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -406,11 +452,16 @@
  * 上限仍受 `.dialog` 的 `max-width: calc(100vw - 40px)` 约束，窄窗口不会溢出。
  */
 .dialog.char-editor {
-  width: 720px;
-  max-height: calc(100vh - 80px);
+  width: 820px;
+  max-height: calc(100dvh - 44px);
   display: flex;
   flex-direction: column;
+  padding: 25px 28px 18px;
+  border-radius: 20px;
 }
+.dialog.char-editor > h3 { margin-bottom: 2px; font-size: 20px; }
+.dialog.char-editor .character-editor-note { margin-bottom: 17px; font-size: 12px; }
+.dialog.char-editor .actions { border-top: 1px solid var(--border-subtle); padding-top: 13px; margin-top: 10px; }
 
 /* 容器 tabindex=-1、不进 Tab 序列，打开时的程序化聚焦不该画出焦点环 */
 .dialog.char-editor:focus,
@@ -424,6 +475,16 @@
   overflow-y: auto;
   /* 让滚动条不贴在输入框的边框上 */
   padding-right: 4px;
+}
+
+@media (max-width: 700px) {
+  .character-library-page { padding: 24px 18px 36px; }
+  .char-grid { grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 16px 12px; }
+  .char-detail-head { gap: 15px; }
+  .char-detail-figure { width: 104px; }
+  .char-detail-info h3 { font-size: 19px; }
+  .editor-grid-columns { grid-template-columns: 1fr; }
+  .editor-section-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
 }
 
 .char-detail-label {

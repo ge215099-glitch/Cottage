@@ -99,23 +99,16 @@ export interface CharacterFormProps {
   firstFieldRef?: RefObject<HTMLInputElement | null>;
 }
 
-/**
- * 角色卡表单本体（不含外壳）。
- *
- * 字段与提示文案与产品设计文档 3.2 一致；`system_prompt` 留空的含义是
- * "用描述/性格/场景拼接"，所以那个提示必须留在标签里，不能省。
- */
+/** 角色卡表单本体（不含外壳），字段标签保持简短。 */
 export function CharacterForm({ value, onChange, firstFieldRef }: CharacterFormProps): JSX.Element {
   const text = (
     key: TextFieldKey,
     label: string,
-    hint?: string,
     rows?: number,
   ): JSX.Element => (
     <div className="field">
       <label htmlFor={`f-${key}`}>
         {label}
-        {hint ? <span className="sub">（{hint}）</span> : null}
       </label>
       {rows ? (
         <textarea
@@ -137,54 +130,47 @@ export function CharacterForm({ value, onChange, firstFieldRef }: CharacterFormP
   );
 
   return (
-    <>
-      <div className="editor-grid">
-        {text('name', '名称')}
-        {text('description', '描述', 'system_prompt 为空时用于拼接', 4)}
-        {text('personality', '性格', undefined, 3)}
-        {text('scenario', '场景', undefined, 3)}
-        {text('firstMes', '开场白 first_mes', undefined, 3)}
-        {text('systemPrompt', 'system_prompt', '留空则用描述/性格/场景拼接', 4)}
-        {text('postHistoryInstructions', 'post_history_instructions', undefined, 3)}
-        {text('mesExample', '示例对话 mes_example', '用 {{user}}: / {{char}}: 标记', 5)}
-      </div>
+    <div className="character-form">
+      <section className="editor-section">
+        <div className="editor-section-heading">
+          <h4>角色信息</h4>
+        </div>
+        <div className="editor-grid">
+          {text('name', '名称')}
+          <div className="field">
+            <label htmlFor="f-tags">标签 <span className="sub">（逗号分隔）</span></label>
+            <input id="f-tags" type="text" value={value.tags.join(', ')} onChange={(event) => onChange({ ...value, tags: event.target.value.split(/[,，]/).map((t) => t.trim()).filter(Boolean) })} />
+          </div>
+          {text('description', '描述', 4)}
+        </div>
+      </section>
 
-      <div className="field" style={{ marginTop: 12 }}>
-        <label htmlFor="f-tags">标签（逗号分隔）</label>
-        <input
-          id="f-tags"
-          type="text"
-          value={value.tags.join(', ')}
-          onChange={(event) =>
-            onChange({
-              ...value,
-              tags: event.target.value
-                .split(/[,，]/)
-                .map((t) => t.trim())
-                .filter(Boolean),
-            })
-          }
-        />
-      </div>
+      <section className="editor-section">
+        <div className="editor-section-heading">
+          <h4>故事与对话</h4>
+        </div>
+        <div className="editor-grid editor-grid-columns">
+          {text('personality', '性格', 3)}
+          {text('scenario', '场景', 3)}
+          {text('firstMes', '开场白', 4)}
+          <div className="field">
+            <label htmlFor="f-alt">备用开场白 <span className="sub">（每行一条）</span></label>
+            <textarea id="f-alt" rows={4} value={value.alternateGreetings.join('\n')} onChange={(event) => onChange({ ...value, alternateGreetings: event.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })} />
+          </div>
+        </div>
+      </section>
 
-      <div className="field">
-        <label htmlFor="f-alt">备用开场白（每行一条）</label>
-        <textarea
-          id="f-alt"
-          rows={3}
-          value={value.alternateGreetings.join('\n')}
-          onChange={(event) =>
-            onChange({
-              ...value,
-              alternateGreetings: event.target.value
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            })
-          }
-        />
-      </div>
-    </>
+      <section className="editor-section">
+        <div className="editor-section-heading">
+          <h4>提示词与示例</h4>
+        </div>
+        <div className="editor-grid">
+          {text('systemPrompt', '系统提示', 5)}
+          {text('postHistoryInstructions', '历史后指令', 3)}
+          {text('mesExample', '示例对话', 5)}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -259,7 +245,6 @@ export function CharacterEditorDialog({
         </>
       }
     >
-      <p>改动会写回角色卡；原卡的第三方字段仍然原样保留（导出时以 raw_json 为基底）。</p>
       <div className="char-editor-body">
         <CharacterForm value={draft} onChange={setDraft} firstFieldRef={firstFieldRef} />
       </div>

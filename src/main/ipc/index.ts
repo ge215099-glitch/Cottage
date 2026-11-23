@@ -9,7 +9,7 @@
  *   3. **错误统一成 NormalizedError**：handler 抛异常不会打穿到 renderer，
  *      而是变成 `{ ok: false, error }`，逼迫 UI 处理失败分支。
  */
-import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain, nativeTheme, session } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { ALL_INVOKE_CHANNELS, EVENT, INVOKE } from '@shared/ipc.js';
@@ -34,6 +34,7 @@ import * as settingsDao from '../db/dao/settings.js';
 
 import {
   characterExportFormatSchema,
+  characterTranslationSchema,
   characterUpdateSchema,
   compressInputSchema,
   conversationPatchSchema,
@@ -55,6 +56,7 @@ import { beginGeneration } from '../services/generate.js';
 import { buildUsageSummary } from '../services/usage.js';
 import { compressConversation, previewCompressionRange } from '../services/compress.js';
 import { importCharacterFromFile } from '../services/character-import.js';
+import { chubPathSchema, chubQuerySchema, createChubCatalog } from '../services/chub.js';
 import {
   ExportError,
   conversationStats,
@@ -200,6 +202,21 @@ const noArgs = z.void();
 function buildHandlers(ctx: AppContext): Map<string, Handler> {
   const db = ctx.db;
   const handlers = new Map<string, Handler>();
+  let chubSession: Promise<Electron.Session> | undefined;
+  const chub = createChubCatalog(db, ctx.userDataDir, async (input, options) => {
+    chubSession ??= (async () => {
+      const isolated = session.fromPartition('chub-catalog');
+      await isolated.setProxy({ mode: 'system' });
+      return isolated;
+    })().catch((error) => {
+      chubSession = undefined;
+      throw error;
+    });
+    return (await chubSession).fetch(input, options);
+  });
+  handlers.set(INVOKE.chubSearch, validated(chubQuerySchema, (query) => chub.search(query)));
+  handlers.set(INVOKE.chubCover, validated(chubPathSchema, (path) => chub.cover(path)));
+  handlers.set(INVOKE.chubImport, validated(chubPathSchema, (path) => chub.importCard(path)));
 
   /* ------------------------------ Provider ------------------------------ */
 
@@ -315,6 +332,21 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
   handlers.set(
     INVOKE.charactersDelete,
     validated(idArg, (id) => charactersDao.deleteCharacter(db, id)),
+  );
+
+  handlers.set(
+    INVOKE.charactersTranslate,
+    validated(characterTranslationSchema, (input) => ctx.characterTranslations.start(input)),
+  );
+
+  handlers.set(
+    INVOKE.charactersCancelTranslation,
+    validated(idArg, (id) => ctx.characterTranslations.cancel(id)),
+  );
+
+  handlers.set(
+    INVOKE.charactersSaveTranslation,
+    validated(idArg, (id) => ctx.characterTranslations.save(id, Date.now())),
   );
 
   handlers.set(
@@ -660,7 +692,11 @@ function buildHandlers(ctx: AppContext): Map<string, Handler> {
 
   handlers.set(
     INVOKE.settingsUpdate,
-    validated(settingsPatchSchema, (patch) => settingsDao.writeSettings(db, patch, Date.now())),
+    validated(settingsPatchSchema, (patch) => {
+      const settings = settingsDao.writeSettings(db, patch, Date.now());
+      if (patch.theme !== undefined) nativeTheme.themeSource = settings.theme;
+      return settings;
+    }),
   );
 
   handlers.set(

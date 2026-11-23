@@ -17,7 +17,7 @@
  *   - 单窗口 + `requestSingleInstanceLock()`。
  *   - 主进程**不得吞异常**：未捕获异常必须落日志（已脱敏）并让 UI 可见。
  */
-import { BrowserWindow, app, protocol } from 'electron';
+import { BrowserWindow, app, nativeTheme, protocol } from 'electron';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { EVENT } from '@shared/ipc.js';
@@ -29,6 +29,7 @@ import { resolveAvatarRequest } from './avatars.js';
 import { openBetterSqlite3Driver } from './db/better-sqlite3-driver.js';
 import { migrate } from './db/migrations/index.js';
 import { sweepStreamingMessages } from './db/dao/messages.js';
+import { readSettings } from './db/dao/settings.js';
 import { registerIpc, setAppVersion, setMainWindow } from './ipc/index.js';
 import { createMainWindow } from './window.js';
 
@@ -131,6 +132,7 @@ async function bootstrap(): Promise<void> {
   installGlobalErrorHandlers();
 
   // ---- 6. 建窗口 ----
+  nativeTheme.themeSource = readSettings(db).theme;
   const window = createMainWindow();
   mainWindow = window;
   // 让原生对话框（导入角色卡等）归主窗口所有并保持模态，见 ipc/index.ts 的 dialogParent

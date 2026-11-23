@@ -38,7 +38,7 @@ export interface BuildRequestConfig {
   model: string;
   temperature: number;
   topP: number;
-  maxTokens: number;
+  maxTokens?: number;
   /** 是否要求上游回传 usage（OpenAI 需要显式打开） */
   includeUsage?: boolean;
 }
@@ -103,7 +103,7 @@ export function buildOpenAiRequest(spec: PromptSpec, cfg: BuildRequestConfig): R
       messages: toOpenAiMessages(spec),
       temperature: cfg.temperature,
       top_p: cfg.topP,
-      max_tokens: cfg.maxTokens,
+      ...(cfg.maxTokens === undefined ? {} : { max_tokens: cfg.maxTokens }),
       stream: true,
       ...(cfg.includeUsage === false ? {} : { stream_options: { include_usage: true } }),
     },
@@ -167,6 +167,7 @@ export function toAnthropicSystem(spec: PromptSpec): string {
 }
 
 export function buildAnthropicRequest(spec: PromptSpec, cfg: BuildRequestConfig): RequestPlan {
+  if (cfg.maxTokens === undefined) throw new Error('Anthropic 请求必须指定最大输出 token');
   const system = toAnthropicSystem(spec);
   const messages = toAnthropicMessages(spec);
 
