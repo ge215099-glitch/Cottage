@@ -1,7 +1,7 @@
 {
   "name": "cottage-next",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Cottage Next — 本地优先的 AI 角色聊天",
   "author": "Cottage",
   "main": "out/main/index.js",
@@ -46,7 +46,7 @@
     "@types/react-dom": "19.0.4",
     "@vitejs/plugin-react": "4.3.4",
     "electron": "34.3.3",
-    "electron-builder": "25.1.8",
+    "electron-builder": "26.12.0",
     "electron-vite": "3.0.0",
     "jsdom": "26.0.0",
     "react": "19.0.0",

@@ -4,7 +4,7 @@
 
 ## Windows 安装
 
-Windows x64 安装包为 `Cottage-Next-Setup-0.2.0.exe`。在本仓库执行 `pnpm package:win` 可重新生成，产物位于 `dist/`。安装包未做代码签名，Windows 可能显示未知发布者提示。
+Windows x64 安装包为 `Cottage-Next-Setup-0.2.1.exe`，修复 0.2.0 首次安装时可能出现的崩溃。在本仓库执行 `pnpm package:win` 可重新生成，产物位于 `dist/`。安装包未做代码签名，Windows 可能显示未知发布者提示。
 
 ## 启动
 
